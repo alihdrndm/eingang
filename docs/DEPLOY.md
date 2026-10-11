@@ -216,21 +216,21 @@ Requests reach the API through Vercel and Railway's proxies, which add entries t
 Use the public endpoint `GET /api/v1/accuracy`, which has the general limit of 120 requests per minute per client IP:
 
 1. Set `TRUSTED_PROXY_HOPS` on `api` to a candidate value, starting with `1`, and wait until the redeploy is Active.
-2. **Spoofing test.** From your computer (Git Bash on Windows), send 125 requests within a minute, each with a different fake `X-Forwarded-For`:
+2. **Spoofing test.** From your computer (Git Bash on Windows), send 150 requests in parallel (one after another they take longer than the one-minute window), each with a different fake `X-Forwarded-For`:
 
    ```sh
-   for i in $(seq 1 125); do
-     curl -s -o /dev/null -w "%{http_code}\n" -H "X-Forwarded-For: 198.51.100.$i" \
-       https://<project>.vercel.app/api/v1/accuracy
-   done | sort | uniq -c
+   seq 1 150 | xargs -P 16 -I{} curl -s -o /dev/null -w "%{http_code}\n" \
+     -H "X-Forwarded-For: 198.51.100.{}" https://<project>.vercel.app/api/v1/accuracy | sort | uniq -c
    ```
 
-   Correct or too low: some answers are `429`, because the fake header did not change the key. Too high: all `125` are `200`.
+   Correct or too low: some answers are `429`, because the fake header did not change the key. Too high: all `150` are `200`. Run the same command without the `-H` option first: if that gives no `429` either, the counted entry changes on every request and no value is correct for this path.
 3. **Shared-key test.** Right after step 2, while your computer is still limited, open `https://<project>.vercel.app/api/v1/accuracy` from a different network (for example a phone on mobile data, Wi-Fi off). Correct: `200`. Too low: `429`, because both clients share one proxy address.
 4. If step 3 gave `429`, increase the value by one and repeat from step 1 (wait a minute between rounds). Use the smallest value for which step 2 shows `429`s and step 3 shows `200`.
 5. Record the value and the date in `docs/DECISIONS.md` (entry "Proxy hops for rate limits") and here:
 
-   Measured value: not measured yet.
+   Measured value: **2** (11 Oct 2026). Railway's edge appends an internal proxy address to `X-Forwarded-For`, so a request sent straight to the Railway domain arrives as `client, railway-proxy`. With 2 the key is the client, and a fake header lands further left and is ignored (150 spoofed requests: 120 × `200`, 30 × `429`). With 1 the key is the proxy address, which changes per request, so nothing is limited.
+
+   **Known gap:** requests through Vercel were not limited at any value from 1 to 4 (150 requests, all `200`): on that path the counted entry changes per request. Limiting traffic through Vercel needs a code change (`docs/DECISIONS.md`, "Proxy hops for rate limits"). Until then the global sandbox cap (`SANDBOX_DAILY_LIMIT`) and `LLM_ENABLED=false` bound what a visitor can cost.
 
 ## Pausing the demo
 

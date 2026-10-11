@@ -215,6 +215,7 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 ### Proxy hops for rate limits: `TRUSTED_PROXY_HOPS`
 - **Spec:** set DRF's `NUM_PROXIES` to the measured number of proxy hops, and record it.
 - **Did:** a new setting `TRUSTED_PROXY_HOPS` (default 0, in `.env.example`) feeds `NUM_PROXIES`. The hop count of Vercel → Railway can only be measured on the deployed stack, so M9 measures it and records the number here and in `docs/DEPLOY.md`. A test proves that a client-supplied `X-Forwarded-For` does not change the throttle key.
+- **Measured (11 Oct 2026): 2.** Railway's edge appends its own per-request proxy address, so a direct request arrives as `client, railway-proxy`; 2 keys on the client and ignores a client's fake entries (verified with plain and spoofed bursts of 150). Through Vercel no value from 1 to 4 limited anything, because the counted entry differs per request on that path. Open: key Vercel traffic on the client address Vercel forwards without letting a direct request fake it (for example a secret only the Vercel route sends, or refusing direct requests). Until then the global sandbox cap and the LLM switch bound what a visitor can cost.
 
 ### Login is CSRF-protected too
 - **Did:** `POST /auth/login` checks the CSRF token like every other unsafe request, although the visitor has no session yet. This prevents login CSRF. The SPA fetches the token from `GET /auth/csrf` first, as the spec describes. CSRF failures answer `403 CSRF_FAILED`.
