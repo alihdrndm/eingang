@@ -52,3 +52,6 @@ data/
 evals/data/cache/
 .next
 backend/coverage.json
+
+# The demo video is uploaded to GitHub as an attachment, not committed (about 8 MB).
+docs/media/demo.mp4

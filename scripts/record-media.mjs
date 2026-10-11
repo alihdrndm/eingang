@@ -191,6 +191,74 @@ async function scrollPane(page, locator) {
   await page.evaluate(() => window.scrollTo(0, 0));
 }
 
+// The demo draws its own pointer: the browser's cursor is not part of a recorded video.
+// It follows the real mouse events, keeps its place across page loads and rings on a click.
+function drawPointer() {
+  const draw = () => {
+    if (document.getElementById("demo-pointer")) return;
+    const pointer = document.createElement("div");
+    pointer.id = "demo-pointer";
+    pointer.innerHTML =
+      '<svg width="30" height="30" viewBox="0 0 30 30"><path d="M6 3.5l17.5 11-7.9 1.8 4.5 8.7-3.6 1.8-4.5-8.8L6 23.5z" fill="#1f1c18" stroke="#fffdf9" stroke-width="1.7" stroke-linejoin="round"/></svg>';
+    Object.assign(pointer.style, { position: "fixed", left: "0", top: "0", zIndex: "2147483647", pointerEvents: "none", opacity: "0", filter: "drop-shadow(0 2px 3px rgba(31,28,24,.3))" });
+    const ring = document.createElement("div");
+    Object.assign(ring.style, { position: "fixed", left: "0", top: "0", width: "40px", height: "40px", borderRadius: "50%", border: "3px solid #2d5bd3", zIndex: "2147483646", pointerEvents: "none", opacity: "0" });
+    document.documentElement.append(ring, pointer);
+    const place = (x, y) => {
+      pointer.style.transform = `translate(${x - 6}px, ${y - 3.5}px)`;
+      pointer.style.opacity = "1";
+      sessionStorage.setItem("demo-pointer", JSON.stringify({ x, y }));
+    };
+    const saved = JSON.parse(sessionStorage.getItem("demo-pointer") || "null");
+    if (saved) place(saved.x, saved.y);
+    addEventListener("mousemove", (event) => place(event.clientX, event.clientY), true);
+    addEventListener(
+      "mousedown",
+      (event) => {
+        const at = `translate(${event.clientX - 20}px, ${event.clientY - 20}px)`;
+        ring.animate(
+          [
+            { opacity: 0.7, transform: `${at} scale(0.35)` },
+            { opacity: 0, transform: `${at} scale(1.3)` },
+          ],
+          { duration: 520, easing: "cubic-bezier(.2,.7,.3,1)" },
+        );
+      },
+      true,
+    );
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", draw);
+  else draw();
+}
+
+let mouseAt = { x: 1500, y: 640 };
+
+/** Moves the mouse to x, y on an ease-in-out curve, as a hand would. */
+async function glide(page, x, y, ms) {
+  const from = { ...mouseAt };
+  const distance = Math.hypot(x - from.x, y - from.y);
+  const duration = ms ?? Math.min(900, Math.max(350, distance * 0.9));
+  const steps = Math.max(8, Math.round(duration / 16));
+  for (let step = 1; step <= steps; step++) {
+    const t = step / steps;
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+    await page.mouse.move(from.x + (x - from.x) * eased, from.y + (y - from.y) * eased);
+    await page.waitForTimeout(16);
+  }
+  mouseAt = { x, y };
+}
+
+/** Glides to the control's centre, pauses briefly and clicks it. */
+async function press(page, locator) {
+  await locator.waitFor();
+  const box = await locator.boundingBox();
+  await glide(page, box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(200);
+  await page.mouse.down();
+  await page.waitForTimeout(90);
+  await page.mouse.up();
+}
+
 // The storyboard of design/export/Media Demo Storyboard.dc.html: cards are rendered
 // frames, app shots are recorded live against the running app with the sandbox. An app
 // shot calls ready() once its screen is shown; its clip, and so its caption, starts there.
@@ -199,9 +267,11 @@ const SHOTS = [
   {
     app: async (page, ready) => {
       await page.goto(APP);
-      await page.getByRole("button", { name: "Open the sandbox" }).first().waitFor();
+      const open = page.getByRole("button", { name: "Open the sandbox" }).first();
+      await open.waitFor();
       await ready();
-      await page.getByRole("button", { name: "Open the sandbox" }).first().click();
+      await page.waitForTimeout(600);
+      await press(page, open);
       await page.waitForURL(/\/app\/inbox/);
     },
     seconds: 5,
@@ -210,11 +280,12 @@ const SHOTS = [
   { card: ["Media Demo Chapters.dc.html", "?ch=1"], seconds: 3 },
   {
     app: async (page, ready) => {
-      await page.getByRole("tab", { name: /^All/ }).click();
+      await press(page, page.getByRole("tab", { name: /^All/ }));
       await page.getByRole("row").filter({ hasText: "RE-2026-0413" }).waitFor();
+      await glide(page, 1180, 330, 500);
       await ready();
-      await page.mouse.move(1500, 300);
-      await page.mouse.move(1500, 800, { steps: 40 });
+      await page.waitForTimeout(500);
+      await glide(page, 1180, 860, 5200);
     },
     seconds: 8,
     caption: "Twelve invoices, each with a verdict",
@@ -222,9 +293,10 @@ const SHOTS = [
   {
     app: async (page, ready) => {
       await ready();
-      await page.getByRole("button", { name: "Upload invoices" }).first().click();
+      await press(page, page.getByRole("button", { name: "Upload invoices" }).first());
+      await page.waitForTimeout(500);
       await page.setInputFiles('input[type="file"]', SAMPLE_PDF);
-      await page.waitForTimeout(8000);
+      await page.waitForTimeout(7500);
       await page.keyboard.press("Escape");
     },
     seconds: 10,
@@ -235,19 +307,20 @@ const SHOTS = [
     app: async (page, ready) => {
       await page.goto(`${APP}/app/inbox?tab=all`);
       // The seeded plain PDF (sample S08), not the copy uploaded in the shot before.
-      await page.getByRole("row").filter({ hasText: "Druckerei Sommer" }).last().click();
+      await press(page, page.getByRole("row").filter({ hasText: "Druckerei Sommer" }).last());
       await page.getByRole("heading", { name: "Fields" }).waitFor();
       await ready();
+      await page.waitForTimeout(700);
       const eye = page.getByRole("button", { name: "Show where IBAN came from" });
       await scrollPane(page, eye);
-      await eye.click();
+      await press(page, eye);
       const evidence = page.getByRole("group", { name: "Where IBAN came from" });
       await evidence.waitFor();
-      await page.waitForTimeout(2500);
-      await evidence.getByRole("button", { name: "Show in document" }).click();
+      await page.waitForTimeout(2600);
+      await press(page, evidence.getByRole("button", { name: "Show in document" }));
       await page.evaluate(() => window.scrollTo(0, 0));
     },
-    seconds: 9,
+    seconds: 10,
     caption: "Every AI value shows its source",
   },
   {
@@ -255,52 +328,62 @@ const SHOTS = [
       const edit = page.getByRole("button", { name: "Edit Supplier VAT ID" });
       await scrollPane(page, edit);
       await ready();
-      await edit.click();
+      await press(page, edit);
       await page.getByLabel("Supplier VAT ID").fill("");
-      await page.getByLabel("Supplier VAT ID").pressSequentially("DE360588120", { delay: 80 });
-      await page.waitForTimeout(600);
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByLabel("Supplier VAT ID").pressSequentially("DE360588120", { delay: 90 });
+      await page.waitForTimeout(500);
+      await press(page, page.getByRole("button", { name: "Save", exact: true }));
       await page.evaluate(() => window.scrollTo(0, 0));
     },
-    seconds: 5,
+    seconds: 6,
     caption: "Low confidence? Type it from paper",
   },
   { card: ["Media Demo Chapters.dc.html", "?ch=3"], seconds: 3 },
   {
     app: async (page, ready) => {
       await page.goto(`${APP}/app/inbox?tab=all`);
-      await page.getByRole("row").filter({ hasText: "RE-2026-0413" }).click();
-      await page.getByRole("button", { name: "Show official message" }).first().waitFor();
+      await press(page, page.getByRole("row").filter({ hasText: "RE-2026-0413" }));
+      const official = page.getByRole("button", { name: "Show official message" }).first();
+      await official.waitFor();
       await ready();
-      await page.getByRole("button", { name: "Show official message" }).first().click();
-      await page.waitForTimeout(2000);
-      await page.getByRole("button", { name: "Show in XML" }).first().click();
+      await page.waitForTimeout(800);
+      await press(page, official);
+      await page.waitForTimeout(2200);
+      await press(page, page.getByRole("button", { name: "Show in XML" }).first());
       await page.evaluate(() => window.scrollTo(0, 0));
     },
-    seconds: 7,
+    seconds: 8,
     caption: "Rule BR-DE-15, explained in plain English",
   },
   {
     app: async (page, ready) => {
       await page.goto(`${APP}/app/inbox?tab=all`);
-      await page.getByRole("row").filter({ hasText: "BN-88290" }).click();
-      await page.locator(".card").filter({ hasText: "C05" }).getByRole("button", { name: "Resolve…" }).waitFor();
+      await press(page, page.getByRole("row").filter({ hasText: "BN-88290" }));
+      const resolve = page.locator(".card").filter({ hasText: "C05" }).getByRole("button", { name: "Resolve…" });
+      await resolve.waitFor();
       await ready();
-      await page.locator(".card").filter({ hasText: "C05" }).getByRole("button", { name: "Resolve…" }).click();
+      await page.waitForTimeout(700);
+      await press(page, resolve);
       await page.getByLabel("Note").pressSequentially("Checked with the supplier on the number in our files.", { delay: 40 });
-      await page.getByRole("button", { name: "Resolve check" }).click();
-      await page.getByRole("button", { name: "Mark reviewed" }).click();
+      await press(page, page.getByRole("button", { name: "Resolve check" }));
+      await page.waitForTimeout(500);
+      await press(page, page.getByRole("button", { name: "Mark reviewed" }));
     },
-    seconds: 10,
+    seconds: 11,
     caption: "New bank account? Check before paying",
   },
   { card: ["Media Demo Chapters.dc.html", "?ch=4"], seconds: 3 },
   {
     app: async (page, ready) => {
       await page.goto(`${APP}/app/approvals`);
-      await page.locator("li, tr").filter({ hasText: "BN-88290" }).first().waitFor();
+      const row = page.locator("li, tr").filter({ hasText: "BN-88290" }).first();
+      await row.waitFor();
       await ready();
-      await page.locator("li, tr").filter({ hasText: "BN-88290" }).first().getByRole("button", { name: "Approve" }).click();
+      await page.waitForTimeout(900);
+      await press(page, row.getByRole("button", { name: "Approve" }));
+      // The button grows into "Approving…" and wraps; the pointer moves off the row.
+      await page.waitForTimeout(250);
+      await glide(page, mouseAt.x - 260, mouseAt.y + 170, 700);
     },
     seconds: 6,
     caption: "Then someone approves it",
@@ -308,15 +391,18 @@ const SHOTS = [
   {
     app: async (page, ready) => {
       await page.goto(`${APP}/app/exports`);
-      await page.locator("label").filter({ hasText: "CSV, one row per invoice" }).first().waitFor();
+      const csv = page.locator("label").filter({ hasText: "CSV, one row per invoice" }).filter({ hasNotText: "invoice line" });
+      await csv.first().waitFor();
       await ready();
-      await page.locator("label").filter({ hasText: "CSV, one row per invoice" }).filter({ hasNotText: "invoice line" }).click();
-      await page.getByRole("button", { name: /^Export \d+ invoices?$/ }).click();
+      await page.waitForTimeout(700);
+      await press(page, csv.first());
+      await page.waitForTimeout(300);
+      await press(page, page.getByRole("button", { name: /^Export \d+ invoices?$/ }));
     },
-    seconds: 6,
+    seconds: 7,
     caption: "One CSV for the tax advisor",
   },
-  { card: ["Media Demo End.dc.html", "", { "sandbox URL": "eingang.vercel.app", "GitHub repository URL": "github.com/alihdrndm/eingang" }], seconds: 4 },
+  { card: ["Media Demo End.dc.html", "", { "sandbox URL": "eingang.vercel.app", "GitHub repository URL": "github.com/alihdrndm/eingang" }], seconds: 5 },
 ];
 
 /** A caption as a transparent PNG, in the self-hosted Instrument Sans (no font CDN). */
@@ -334,6 +420,10 @@ async function captionPng(browser, text, out) {
   await page.close();
 }
 
+// Length of each cross-dissolve in seconds, and a near-lossless codec for the parts.
+const FADE = 0.6;
+const SEGMENT_CODEC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "12", "-pix_fmt", "yuv420p"];
+
 async function demo(browser, design) {
   needFfmpeg();
   const context = await browser.newContext({
@@ -341,6 +431,7 @@ async function demo(browser, design) {
     recordVideo: { dir: path.join(TMP, "app"), size: { width: 1920, height: 1080 } },
     acceptDownloads: true,
   });
+  await context.addInitScript(drawPointer);
   const app = await context.newPage();
   const recordingStart = Date.now(); // the page's video starts with the page, not with the first shot
   const parts = [];
@@ -349,7 +440,7 @@ async function demo(browser, design) {
     if (shotSpec.card) {
       const png = path.join(TMP, `card-${index + 1}.png`);
       await shot(browser, design, shotSpec.card[0], png, 1920, 1080, shotSpec.card[1], shotSpec.card[2]);
-      ffmpeg(["-loop", "1", "-t", String(shotSpec.seconds), "-i", png, "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p", segment]);
+      ffmpeg(["-loop", "1", "-t", String(shotSpec.seconds + FADE), "-i", png, "-r", "30", ...SEGMENT_CODEC, segment]);
     } else {
       let started;
       await shotSpec.app(app, async () => {
@@ -359,11 +450,13 @@ async function demo(browser, design) {
       });
       if (!started) throw new Error(`Shot ${index + 1} ("${shotSpec.caption}") never showed its screen`);
       // A slow shot (opening a sandbox seeds twelve invoices) keeps its last seconds.
+      const hold = shotSpec.seconds + FADE;
       const used = (Date.now() - started) / 1000;
-      if (used > shotSpec.seconds) started = Date.now() - shotSpec.seconds * 1000;
-      else await app.waitForTimeout((shotSpec.seconds - used) * 1000);
-      await app.waitForTimeout(300);
+      if (used > hold) started = Date.now() - hold * 1000;
+      else await app.waitForTimeout((hold - used) * 1000);
       shotSpec.span = [started, Date.now()];
+      // Idle time, so the next shot's navigation stays out of this clip's dissolve.
+      await app.waitForTimeout(1200);
     }
     parts.push({ shotSpec, segment });
   }
@@ -382,11 +475,30 @@ async function demo(browser, design) {
     const caption = segment.replace(".mp4", "-cap.png");
     await captionPng(browser, shotSpec.caption, caption);
     const from = Math.max(0, (shotSpec.span[0] - recordingStart) / 1000 - lag).toFixed(2);
-    ffmpeg(["-ss", from, "-t", String(shotSpec.seconds), "-i", raw, "-i", caption, "-filter_complex", "[0:v]fps=30,scale=1920:1080[v];[v][1:v]overlay=0:0", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", segment]);
+    // The caption fades in once the dissolve into this shot is over and out before the next one.
+    const length = shotSpec.seconds + FADE;
+    const captionFade = `fade=t=in:st=${FADE}:d=0.35:alpha=1,fade=t=out:st=${(length - FADE - 0.35).toFixed(2)}:d=0.35:alpha=1`;
+    ffmpeg([
+      "-ss", from, "-t", String(length), "-i", raw,
+      "-loop", "1", "-t", String(length), "-i", caption,
+      "-filter_complex", `[0:v]fps=30,scale=1920:1080,setsar=1[v];[1:v]format=rgba,${captionFade}[c];[v][c]overlay=0:0:shortest=1`,
+      ...SEGMENT_CODEC, "-an", segment,
+    ]);
   }
-  const list = path.join(TMP, "list.txt");
-  writeFileSync(list, parts.map((part) => `file '${path.resolve(part.segment)}'`).join("\n"));
-  ffmpeg(["-f", "concat", "-safe", "0", "-i", list, "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", path.join(OUT, "demo.mp4")]);
+  // Every cut is a cross-dissolve; the film fades in from black and out to black.
+  const inputs = parts.flatMap((part) => ["-i", part.segment]);
+  const filters = parts.map((_, index) => `[${index}:v]settb=AVTB,fps=30,format=yuv420p[s${index}]`);
+  let previous = "s0";
+  let offset = 0;
+  parts.forEach((part, index) => {
+    if (index === 0) return;
+    offset += parts[index - 1].shotSpec.seconds;
+    filters.push(`[${previous}][s${index}]xfade=transition=fade:duration=${FADE}:offset=${offset.toFixed(2)}[x${index}]`);
+    previous = `x${index}`;
+  });
+  const total = parts.reduce((sum, part) => sum + part.shotSpec.seconds, 0) + FADE;
+  filters.push(`[${previous}]fade=t=in:st=0:d=0.6,fade=t=out:st=${(total - 0.9).toFixed(2)}:d=0.9[out]`);
+  ffmpeg([...inputs, "-filter_complex", filters.join(";"), "-map", "[out]", "-r", "30", "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", path.join(OUT, "demo.mp4")]);
   console.log("✓ demo.mp4");
 }
 
