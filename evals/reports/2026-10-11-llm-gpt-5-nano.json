@@ -1,0 +1,74 @@
+{
+  "id": "llm:gpt-5-nano",
+  "model": "gpt-5-nano",
+  "prompt_version": "extract_invoice.v1",
+  "critical_correct": {
+    "value": 0.6538461538461539,
+    "ci_low": 0.5673076923076923,
+    "ci_high": 0.7403846153846154
+  },
+  "fields": {
+    "invoice_number": {
+      "accuracy": 0.9038461538461539,
+      "abstention": 0.019230769230769232
+    },
+    "issue_date": {
+      "accuracy": 0.7788461538461539,
+      "abstention": 0.19230769230769232
+    },
+    "due_date": {
+      "accuracy": 0.38235294117647056,
+      "hallucination": 0.11428571428571428,
+      "abstention": 0.5294117647058824
+    },
+    "currency": {
+      "accuracy": 0.9903846153846154,
+      "abstention": 0.009615384615384616
+    },
+    "seller.name": {
+      "accuracy": 0.8653846153846154,
+      "abstention": 0.009615384615384616
+    },
+    "seller.vat_id": {
+      "accuracy": 0.9607843137254902,
+      "hallucination": 1.0,
+      "abstention": 0.0196078431372549
+    },
+    "payee_iban": {
+      "accuracy": 0.9428571428571428,
+      "hallucination": 0.2463768115942029,
+      "abstention": 0.0
+    },
+    "buyer.name": {
+      "accuracy": 0.8557692307692307,
+      "abstention": 0.028846153846153848
+    },
+    "net_total": {
+      "accuracy": 0.8173076923076923,
+      "abstention": 0.16346153846153846
+    },
+    "tax_total": {
+      "accuracy": 0.7596153846153846,
+      "abstention": 0.22115384615384615
+    },
+    "gross_total": {
+      "accuracy": 0.8365384615384616,
+      "abstention": 0.125
+    },
+    "payable_amount": {
+      "accuracy": 0.9230769230769231,
+      "abstention": 0.009615384615384616
+    }
+  },
+  "cost_usd": "0.033428",
+  "usd_per_doc": "0.000321",
+  "latency_p50_ms": 4649.531700008083,
+  "latency_p95_ms": 5972.52500000468,
+  "generated_at": "2026-10-11T11:04:14.130726Z",
+  "dataset": {
+    "name": "zugferd-corpus-hybrid-cii",
+    "documents": 104,
+    "corpus_commit": "d891458e9822e34271a5438497bf924e89955979"
+  },
+  "documents": 104
+}

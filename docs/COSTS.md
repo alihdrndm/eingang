@@ -47,12 +47,13 @@ The frontend is a static build behind Vercel's rewrites; it runs on Vercel's fre
 
 ## OpenAI
 
-Total live spend recorded in the ledger so far: **$0.000572** (`uv run poe llm-spend` prints the current total).
+Total live spend recorded in the ledger so far: **$0.034000**, plus one evaluation call of about $0.0003 that the ledger lost (see below) (`uv run poe llm-spend` prints the current total).
 
 | Run | Date | Calls | Tokens (input / cached / output) | Cost |
 |-----|------|------:|----------------------------------|-----:|
 | Smoke call (`uv run poe llm-smoke`), gpt-5-nano, reasoning effort minimal | 11 Oct 2026 | 3 | 3,527 / 0 / 990 | $0.000572 |
 | Sample precompute (`uv run poe precompute-samples`): S08 extraction, S10 comparison | 11 Oct 2026 | 2 cache hits | 0 / 0 / 0 | $0.000000 |
+| Evaluation run (`uv run poe eval-llm`), 104 documents | 11 Oct 2026 | 98 paid + 5 cache hits | 288,344 / 198,016 / 69,808 | $0.033428 |
 
 The smoke call cost 39% of its estimate ($0.001485): the estimate assumes every output token up to `max_output_tokens` is used, and the answers used 739 of 2,500 (extract), 178 of 600 (compare) and 73 of 400 (explain). The budgets are in `docs/DEPLOY.md` and `HANDOFF.md`: $2.00 lifetime per project, $1.50 per month, $0.10 per day for public demo use, 3 calls per sandbox. Estimates shown before the paid steps (gpt-5-nano prices, $0.05 input / $0.005 cached / $0.40 output per million tokens):
 
@@ -60,6 +61,8 @@ The smoke call cost 39% of its estimate ($0.001485): the estimate assumes every 
 |------|------------------:|
 | Smoke call (`uv run poe llm-smoke`, 3 calls) | $0.0015 |
 | Sample precompute (`uv run poe precompute-samples`) | $0.0013 (≈ $0 from the cache after the smoke call) |
-| Evaluation run (`uv run poe eval-llm`, 104 documents) | about $0.11 (about $0.04 at the smoke call's real usage); the tool prints its own estimate before it starts; capped at $0.75 |
+| Evaluation run (`uv run poe eval-llm`, 104 documents) | $0.1107 printed by the tool (about $0.04 at the smoke call's real usage); capped at $0.75 |
+
+The evaluation run made 99 API calls but recorded 98: one answer contained a NUL character, PostgreSQL refused to cache it, and the rollback also removed that call's ledger row. Its cost is not known exactly; at the run's average ($0.000341 per paid call) it is about $0.0003. The client now removes NUL from answers and writes the cache in a savepoint, so a failed cache write keeps the ledger row. The run cost 30% of its estimate; cached input (69% of input tokens, billed at a tenth) is most of the gap.
 
 This file is updated with the real spend after each paid step.
