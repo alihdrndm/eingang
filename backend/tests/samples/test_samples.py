@@ -19,7 +19,7 @@ MANIFEST: dict[str, Any] = json.loads(  # boundary: json
 )
 BY_ID = {entry["id"]: entry for entry in MANIFEST["samples"]}
 
-# The sandbox table, with the values the spec prescribes until M5 for S08 and S10.
+# The sandbox table (S08 without C13: the precomputed extraction graded every field high).
 TABLE = {
     "S01": ("XRechnung · UBL", ["C04"], "awaiting_approval", "valid"),
     "S02": ("XRechnung · CII", [], "awaiting_approval", "valid"),
@@ -28,9 +28,9 @@ TABLE = {
     "S05": ("XRechnung · UBL", ["C15"], "needs_review", "invalid"),
     "S06": ("XRechnung · UBL", ["C02"], "needs_review", "valid"),
     "S07": ("XRechnung · CII", ["C05"], "needs_review", "valid"),
-    "S08": ("Plain PDF", ["C11", "C12"], "needs_review", "not_applicable"),
+    "S08": ("Plain PDF", ["C04", "C11"], "needs_review", "not_applicable"),
     "S09": ("Scanned PDF", ["C10", "C11"], "needs_review", "not_applicable"),
-    "S10": ("ZUGFeRD · EN 16931", ["C04"], "awaiting_approval", "valid"),
+    "S10": ("ZUGFeRD · EN 16931", ["C04", "C09"], "needs_review", "valid"),
     "S11": ("XRechnung · UBL · credit note", ["C04"], "approved", "valid"),
     "S12": ("XRechnung · CII", ["C04", "C08"], "rejected", "valid"),
 }
