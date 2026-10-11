@@ -491,7 +491,7 @@ def post_process(
     for name in HEADER_FIELDS:
         raw: str | None = getattr(extracted, name)
         snippet: str | None = getattr(extracted, f"{name}_evidence")
-        if raw is None or not raw.strip():
+        if raw is None or raw.strip().lower() in _NO_VALUE:
             columns[name] = None
             continue
         result = assess(name, raw, snippet, collapsed_page_text, today)
@@ -507,6 +507,10 @@ def post_process(
         confidence=confidence,
         evidence=evidence,
     )
+
+
+# The model sometimes writes "no value" as text instead of JSON null (the M6 run: "null").
+_NO_VALUE = frozenset({"", "null", "none", "n/a"})
 
 
 def parse_number(text: str | None, places: int) -> Decimal | None:

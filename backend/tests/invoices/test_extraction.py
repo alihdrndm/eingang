@@ -390,6 +390,8 @@ def test_post_process_grades_values_and_leaves_null_fields_out() -> None:
         gross_total_evidence=None,
         seller_name="  ",
         seller_name_evidence="Muster GmbH",
+        payee_iban="null",
+        payee_iban_evidence=None,
     )
 
     result = post_process(extracted, PAGE, today=TODAY)
@@ -408,6 +410,7 @@ def test_post_process_grades_values_and_leaves_null_fields_out() -> None:
     assert result.columns["issue_date"] == date(2026, 3, 15)
     assert result.columns["gross_total"] == Decimal("1190.00")
     assert result.columns["seller_name"] is None
+    assert result.columns["payee_iban"] is None  # the text "null" is no value
     assert result.columns["due_date"] is None
 
 
