@@ -1,6 +1,7 @@
 """The activities of ProcessInvoiceWorkflow against a real database and the sample files."""
 
 from collections.abc import Iterator
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -26,7 +27,7 @@ from invoices.models import (
 )
 from llm.schemas import ComparedValues, ExtractedInvoice, RuleExplanationOut
 from sandbox.services import sample_buyer
-from tests.factories import add_check, make_document, make_invoice
+from tests.factories import add_check, make_document, make_invoice, make_sandbox
 from tests.llm import fakes
 
 pytestmark = pytest.mark.django_db
@@ -714,3 +715,32 @@ def test_an_injection_in_a_rule_message_still_gives_a_bounded_explanation(
     saved = RuleExplanation.objects.get(rule_id="BR-EVIL")
     assert len(saved.plain_text) <= 300
     assert len(saved.fix_hint) <= 200
+
+
+def test_a_sandbox_with_one_call_left_explains_one_rule_of_three(
+    db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sdk = fakes.install(monkeypatch)
+    sandbox = make_sandbox(clock.now() + timedelta(hours=1))
+    Organization.objects.filter(id=sandbox.id).update(llm_calls_used=2)
+    document = stored(sandbox, S05)
+    ValidationReport.objects.create(
+        document=document,
+        status="invalid",
+        engine="test",
+        xsd_ok=True,
+        issues=[
+            {"rule_id": f"BR-T-{number}", "message": "A rule.", "source": "en16931"}
+            for number in range(3)
+        ],
+        fatal_count=3,
+        warning_count=0,
+        ran_at=clock.now(),
+    )
+    sdk.replies.extend(
+        fakes.reply(RuleExplanationOut(plain_text="Plain.", fix_hint="Fix.")) for _ in range(3)
+    )
+    with pytest.raises(BudgetExceededError):
+        activities.explain_rules(ref(document))
+    assert len(sdk.requests) == 1
+    assert RuleExplanation.objects.filter(rule_id__startswith="BR-T-").count() == 1

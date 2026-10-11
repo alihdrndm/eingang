@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from eingang.config import Settings
 from llm import client
@@ -23,7 +23,11 @@ class FakeSdk:
     def responses(self) -> "FakeSdk":
         return self
 
-    def parse(self, **kwargs: Any) -> Any:  # boundary: openai, responses.parse
+    @property
+    def with_raw_response(self) -> "FakeSdk":
+        return self
+
+    def parse(self, **kwargs: Any) -> Any:  # boundary: openai, responses.with_raw_response.parse
         self.requests.append(kwargs)
         reply = self.replies.pop(0)
         if isinstance(reply, Exception):
@@ -32,22 +36,29 @@ class FakeSdk:
 
 
 def reply(
-    parsed: BaseModel,
+    parsed: BaseModel | None,
     *,
     status: str = "completed",
     input_tokens: int = 1000,
     cached: int = 200,
     output: int = 100,
 ) -> SimpleNamespace:
-    return SimpleNamespace(
-        status=status,
-        output_parsed=parsed,
-        usage=SimpleNamespace(
-            input_tokens=input_tokens,
-            input_tokens_details=SimpleNamespace(cached_tokens=cached),
-            output_tokens=output,
-        ),
-    )
+    """A raw response: its JSON body, and `parse()` as the SDK's (None parses as cut-off text)."""
+    body = {
+        "status": status,
+        "usage": {
+            "input_tokens": input_tokens,
+            "input_tokens_details": {"cached_tokens": cached},
+            "output_tokens": output,
+        },
+    }
+
+    def parse() -> SimpleNamespace:
+        if parsed is None:  # the SDK raises like this on JSON cut off at the token limit
+            TypeAdapter(dict[str, str]).validate_json('{"invoice_number": "RE-')
+        return SimpleNamespace(output_parsed=parsed)
+
+    return SimpleNamespace(http_response=SimpleNamespace(json=lambda: body), parse=parse)
 
 
 def enabled_settings(**overrides: object) -> Settings:

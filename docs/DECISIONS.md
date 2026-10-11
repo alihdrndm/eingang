@@ -336,7 +336,8 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 ### The LLM client
 - **One lock for budgeted calls:** the budget check, the call and its ledger row run while a Postgres advisory lock is held, so two workers can't both pass the same last check. Calls are rare, so serialising them costs little.
 - **Ledger rows survive errors:** the call's transaction commits its ledger row first; the refusal or error is raised afterwards.
-- **Errors:** a refused request (HTTP 400) is permanent; timeouts, rate limits, server errors and unparsable output are recorded and left to Temporal's two attempts; an incomplete answer is paid for, recorded and refused as permanent.
+- **Errors:** a refused request (HTTP 400) is permanent; timeouts, rate limits and server errors are recorded and left to Temporal's two attempts; an incomplete answer or one that doesn't parse is paid for, recorded with its tokens and refused as permanent. The client reads the raw response (`with_raw_response`) so status and usage are known before parsing, because the SDK raises while parsing JSON cut off at the token limit.
+- **Per-sandbox counter:** it is re-read from the database inside the budget lock, so a loaded organisation that predates earlier calls (an activity explaining several rules) can't pass the check again.
 - **Per-sandbox cap:** every call that reaches the API counts (including failed ones); cache hits don't, because they cost nothing. Calls for a sandbox are marked `is_public` in the ledger, so a deleted sandbox's spend still counts against today's public budget.
 - **Ledger time** comes from the injected clock, so the monthly and daily windows are testable.
 - **Cache key:** model, prompt version, the exact two input messages (instructions, fenced data) and the output schema. `store=false` is sent, so OpenAI keeps no copy of the conversation.

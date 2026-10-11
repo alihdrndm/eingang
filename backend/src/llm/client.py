@@ -144,21 +144,27 @@ def _call_api[T: BaseModel](
         arguments["reasoning"] = {"effort": settings.OPENAI_REASONING_EFFORT}
     started = time.monotonic()
     try:
-        response = sdk_factory(settings).responses.parse(**arguments)
+        # The raw response: its status and usage are read before parsing, because the SDK
+        # raises while parsing an answer that was cut off, and that answer is still paid for.
+        raw = sdk_factory(settings).responses.with_raw_response.parse(**arguments)
     except openai.BadRequestError as error:
         _failed(request, settings, started)
         return PermanentError(f"The LLM request was refused: {error.code or 'bad request'}")
-    except (openai.APIError, ValidationError) as error:
-        # Timeouts, rate limits, server errors, unparsable output: recorded, then retried
-        # by Temporal (at most two attempts for LLM activities).
+    except openai.APIError as error:
+        # Timeouts, rate limits, server errors: recorded, then retried by Temporal (at most
+        # two attempts for LLM activities).
         _failed(request, settings, started)
         return error
-    usage = response.usage
-    input_tokens = int(usage.input_tokens) if usage else 0
-    cached_tokens = int(usage.input_tokens_details.cached_tokens or 0) if usage else 0
-    output_tokens = int(usage.output_tokens) if usage else 0
-    parsed = response.output_parsed
-    complete = response.status == "completed" and isinstance(parsed, request.output)
+    body = raw.http_response.json()  # boundary: json
+    usage = body.get("usage") or {}
+    input_tokens = int(usage.get("input_tokens") or 0)
+    cached_tokens = int((usage.get("input_tokens_details") or {}).get("cached_tokens") or 0)
+    output_tokens = int(usage.get("output_tokens") or 0)
+    try:
+        parsed = raw.parse().output_parsed
+    except ValidationError:
+        parsed = None
+    complete = body.get("status") == "completed" and isinstance(parsed, request.output)
     _ledger(
         request,
         settings,

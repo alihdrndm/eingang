@@ -179,11 +179,12 @@ def test_a_sandbox_gets_three_calls(
     sdk.replies.extend(reply() for _ in range(3))
     for number in range(3):
         client.call(request(sandbox, data=f"invoice {number}"))
-    sandbox.refresh_from_db()
-    assert sandbox.llm_calls_used == 3
+    # The same loaded object, as an activity looping over rules holds it: still refused.
     with pytest.raises(BudgetExceededError) as error:
         client.call(request(sandbox, data="invoice 4"))
     assert refusal_reason(error) == "sandbox_limit"
+    sandbox.refresh_from_db()
+    assert sandbox.llm_calls_used == 3
     assert LlmCall.objects.filter(is_public=True, status="ok").count() == 3
 
 
@@ -256,6 +257,20 @@ def test_an_incomplete_response_is_paid_for_and_refused(configure: Configure, sd
     assert not LlmCache.objects.exists()
 
 
+@pytest.mark.parametrize("status", ["incomplete", "completed"])
+def test_an_answer_that_does_not_parse_is_paid_for_and_not_retried(
+    configure: Configure, sdk: FakeSdk, status: str
+) -> None:
+    # The SDK raises while parsing JSON cut off at max_output_tokens; the tokens are spent.
+    sdk.replies.append(fakes.reply(None, status=status, output=2500))
+    with pytest.raises(PermanentError):
+        client.call(request())
+    row = LlmCall.objects.get()
+    assert (row.status, row.output_tokens) == ("error", 2500)
+    assert row.cost == budget.cost(budget.Prices.from_settings(settings()), 1000, 200, 2500)
+    assert not LlmCache.objects.exists()
+
+
 def test_a_failed_call_is_recorded_and_raised_for_a_retry(
     configure: Configure, sdk: FakeSdk
 ) -> None:
@@ -304,3 +319,48 @@ def test_llm_spend_prints_the_ledger_total() -> None:
     output = StringIO()
     call_command("llm_spend", stdout=output, stderr=StringIO())
     assert output.getvalue().strip() == "0.250123"
+
+
+def test_the_real_sdk_cut_off_at_the_token_limit_is_paid_for(
+    configure: Configure, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The real SDK over a mock transport (no network): the JSON text ends mid-string.
+    body = {
+        "id": "resp_1",
+        "object": "response",
+        "created_at": 0,
+        "model": "test-model",
+        "status": "incomplete",
+        "incomplete_details": {"reason": "max_output_tokens"},
+        "output": [
+            {
+                "type": "message",
+                "id": "msg_1",
+                "role": "assistant",
+                "status": "incomplete",
+                "content": [
+                    {"type": "output_text", "text": '{"invoice_number": "RE-', "annotations": []}
+                ],
+            }
+        ],
+        "parallel_tool_calls": False,
+        "tool_choice": "auto",
+        "tools": [],
+        "usage": {
+            "input_tokens": 1000,
+            "input_tokens_details": {"cached_tokens": 0},
+            "output_tokens": 2500,
+            "output_tokens_details": {"reasoning_tokens": 0},
+            "total_tokens": 3500,
+        },
+    }
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json=body))
+    sdk = openai.OpenAI(
+        api_key="test-key", max_retries=0, http_client=httpx.Client(transport=transport)
+    )
+    monkeypatch.setattr(client, "sdk_factory", lambda _settings: sdk)
+    with pytest.raises(PermanentError):
+        client.call(request())
+    row = LlmCall.objects.get()
+    assert (row.status, row.input_tokens, row.output_tokens) == ("error", 1000, 2500)
+    assert row.cost > 0

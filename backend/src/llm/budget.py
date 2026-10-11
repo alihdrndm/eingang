@@ -70,6 +70,13 @@ def _month_start(moment: datetime) -> datetime:
     return datetime(utc.year, utc.month, 1, tzinfo=UTC)
 
 
+def _calls_used(organization: Organization | None) -> int:
+    """The counter as stored now: a loaded organisation may predate calls made since."""
+    if organization is None:
+        return 0
+    return Organization.objects.values_list("llm_calls_used", flat=True).get(id=organization.id)
+
+
 def refusal(
     settings: Settings, organization: Organization | None, estimated: Decimal
 ) -> RefusalReason | None:
@@ -80,8 +87,7 @@ def refusal(
     if not settings.LLM_ENABLED:
         return "disabled"
     public = organization is not None and organization.is_sandbox
-    calls_used = organization.llm_calls_used if organization is not None else 0
-    if public and calls_used >= settings.LLM_MAX_CALLS_PER_SANDBOX:
+    if public and _calls_used(organization) >= settings.LLM_MAX_CALLS_PER_SANDBOX:
         return "sandbox_limit"
     elsewhere = settings.LLM_SPENT_ELSEWHERE_USD or Decimal(0)
     if spent() + elsewhere + estimated > settings.LLM_BUDGET_USD_LIFETIME:
