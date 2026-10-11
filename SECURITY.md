@@ -30,7 +30,7 @@ The public demo contains only fictional sample data and whatever visitors upload
 | LLM ledger | Postgres (`llm_calls`) | Purpose, model, token counts, cost, status. Never the prompt or the response text. |
 | LLM response cache | Postgres (`llm_cache`) | The structured answer (for an extraction, the field values the model read), keyed by a hash of the request. Rows are kept when a sandbox or document is deleted. |
 
-**Retention.** A sandbox expires `SANDBOX_TTL_HOURS` (default 24) after it was created. The daily maintenance workflow (03:10 UTC) deletes every expired sandbox: its database rows and its stored files. Deleting a document in the app is a soft delete: the document is hidden but its rows and files are kept. Organisations that are not sandboxes are kept until an operator deletes them.
+**Retention.** A sandbox expires `SANDBOX_TTL_HOURS` (default 24) after it was created. While the services run, the daily maintenance workflow (03:10 UTC) deletes every expired sandbox: its database rows and its stored files. Deleting a document in the app is a soft delete: the document is hidden but its rows and files are kept. Organisations that are not sandboxes are kept until an operator deletes them. While the public demo is paused, maintenance does not run, and expired sandboxes are deleted at the first daily run after it resumes.
 
 **Logs** contain one line per request (method, path without the query string, status, duration, request id) and identifiers (UUIDs). They never contain request or response bodies, file contents, names of people, email addresses, IBANs, prompts or model output.
 
@@ -48,7 +48,7 @@ The public demo contains only fictional sample data and whatever visitors upload
 
 - Session authentication with CSRF protection on every unsafe request, including sign-in and opening a sandbox.
 - Every query is scoped to the signed-in user's organisation; a test checks every object endpoint against access from another organisation.
-- Rate limits per client IP (general, sign-in, sandbox creation) and per user (uploads).
+- Rate limits per client IP (general, sign-in, sandbox creation) and per user (uploads). On the public demo the per-IP limits hold only for requests sent straight to the Railway API domain; requests through the Vercel site are not limited per IP yet, so sign-in has no per-IP limit there and one client can use up the global daily sandbox cap (`docs/DEPLOY.md`, "Known gap"). The per-user upload limit and the global caps apply on every path.
 - Security headers on the API (`X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `X-Frame-Options: DENY` except for the rendered invoice view, a restrictive CSP on HTML) and on the frontend (`frontend/vercel.json`).
 - Every error is `application/problem+json` without stack traces or internal messages.
 
