@@ -229,9 +229,9 @@ const SKELETON_COLUMNS: SkeletonColumn[] = [
           <dt>Correct</dt>
           <dd>The value matches the XML.</dd>
           <dt>Invented</dt>
-          <dd>A value where none is printed.</dd>
+          <dd>A value read where the XML has none. It may still be printed on the PDF.</dd>
           <dt>Missing</dt>
-          <dd>Nothing returned where a value is printed.</dd>
+          <dd>Nothing read where the XML has a value.</dd>
           <dt>—</dt>
           <dd>Nothing to count: no invoice in the set fits the rate.</dd>
         </dl>
