@@ -29,12 +29,11 @@ from tests.factories import make_document
 from tests.llm import fakes
 
 pytestmark = pytest.mark.django_db
-FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "llm"
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "recorded"
 SAMPLES = Path(__file__).resolve().parents[3] / "samples"
 EXTRACT = FIXTURES / "extract.json"
 COMPARE = FIXTURES / "compare.json"
 EXPLAIN = FIXTURES / "explain.json"
-NOT_RECORDED = "recorded at the M5 smoke call"
 
 
 @pytest.fixture(autouse=True)
@@ -87,7 +86,6 @@ def stored(organization: Organization, sample: str) -> c.DocumentRef:
     return ref
 
 
-@pytest.mark.skipif(not EXTRACT.exists(), reason=NOT_RECORDED)
 def test_recorded_extraction_of_S08(buyer: Organization, monkeypatch: pytest.MonkeyPatch) -> None:
     sdk = fakes.install(monkeypatch)
     ref = stored(buyer, "S08-2026-1043.pdf")
@@ -102,7 +100,6 @@ def test_recorded_extraction_of_S08(buyer: Organization, monkeypatch: pytest.Mon
     assert invoice.field_confidence["gross_total"] == "high"
 
 
-@pytest.mark.skipif(not COMPARE.exists(), reason=NOT_RECORDED)
 def test_recorded_comparison_of_S10(buyer: Organization, monkeypatch: pytest.MonkeyPatch) -> None:
     sdk = fakes.install(monkeypatch)
     ref = stored(buyer, "S10-SA-26-1160.pdf")
@@ -117,7 +114,6 @@ def test_recorded_comparison_of_S10(buyer: Organization, monkeypatch: pytest.Mon
     assert (gross.xml, gross.pdf) == ("1200.00", "1190.00")
 
 
-@pytest.mark.skipif(not EXPLAIN.exists(), reason=NOT_RECORDED)
 def test_recorded_explanation_of_BR_DE_15(
     buyer: Organization, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -8,7 +8,7 @@ exactly three calls through the LLM client (budgeted, cached and ledgered):
 - compare: the stored text of sample S10 (a hybrid PDF whose visible gross differs);
 - explain: rule BR-DE-15 with its official message from sample S05's validation report.
 
-Each parsed answer and its usage go to `tests/fixtures/llm/<feature>.json`, which the
+Each parsed answer and its usage go to `tests/fixtures/recorded/<feature>.json`, which the
 recorded-fixture tests replay. The prompt text is never written there.
 """
 
@@ -34,7 +34,7 @@ from invoices.extraction import TEXT_LIMIT
 from llm import requests
 from llm.client import AnyRequest
 
-FIXTURES_DIR = BACKEND_DIR / "tests" / "fixtures" / "llm"
+FIXTURES_DIR = BACKEND_DIR / "tests" / "fixtures" / "recorded"
 EXPLAINED_RULE = "BR-DE-15"
 
 
