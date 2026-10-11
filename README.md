@@ -2,7 +2,7 @@
 
 Eingang is an inbox for supplier invoices that tells a small German business whether each invoice is a valid e-invoice, turns every invoice (XRechnung XML, ZUGFeRD/Factur-X PDF or plain PDF) into the same clean data, catches duplicates and changed bank details, routes it for approval and exports it for the accountant.
 
-**Live demo:** not deployed yet. The link is added when the project is deployed.
+**Live demo:** https://eingang.vercel.app — choose **Open the sandbox** for a private inbox with twelve sample invoices, deleted after 24 hours. AI extraction of new uploads is switched off in the demo. The demo runs on paid hosting and may be paused; the screenshots below show it.
 
 <p>
   <img src="docs/media/feature-verdicts.png" alt="The inbox: every invoice with its format, e-invoice verdict and validation result" width="32%">
