@@ -342,6 +342,7 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 - **Cache key:** model, prompt version, the exact two input messages (instructions, fenced data) and the output schema. `store=false` is sent, so OpenAI keeps no copy of the conversation.
 - **Fences:** a closing tag inside untrusted text is broken up (`</ document>`), so the text can't end its fence.
 - **Prompt version on results:** an LLM-extracted invoice stores `prompt_version` (new column); rule explanations already did.
+- **Model: `gpt-5-nano`, reasoning effort `minimal`**, confirmed by the owner on 11 Oct 2026. It is the cheapest of the 133 models the project key lists (`models.list`) on the official pricing page (developers.openai.com/api/docs/pricing, read 11 Oct 2026): $0.05 input, $0.005 cached input, $0.40 output per million tokens. Next were `gpt-4.1-nano` ($0.10 / $0.025 / $0.40) and `gpt-4o-mini` ($0.15 / $0.075 / $0.60). The smoke call returned complete, schema-valid answers for all three prompts. The model and prices are settings (`backend/.env.example`), not defaults in code.
 
 ### Extraction grading (section 5)
 - A value the model left null gets no confidence entry, so C13 doesn't fire for it: a value that isn't printed isn't a doubtful value.

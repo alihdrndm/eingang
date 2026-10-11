@@ -63,4 +63,7 @@ def test_the_env_example_loads_as_it_is() -> None:
     example = Path(__file__).resolve().parents[2] / ".env.example"
     settings = Settings(_env_file=example)
     assert settings.LLM_ENABLED is False
-    assert settings.OPENAI_PRICE_INPUT_PER_MTOK is None
+    assert settings.OPENAI_MODEL == "gpt-5-nano"
+    assert str(settings.OPENAI_PRICE_INPUT_PER_MTOK) == "0.05"
+    assert str(settings.OPENAI_PRICE_CACHED_INPUT_PER_MTOK) == "0.005"
+    assert str(settings.OPENAI_PRICE_OUTPUT_PER_MTOK) == "0.40"
