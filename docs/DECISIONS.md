@@ -404,3 +404,6 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 - **The four secrets are Railway shared variables**, referenced from `api` and `worker` as `${{shared.NAME}}`, so each is entered once.
 - **Region is set after the first deployment.** Railway shows the region selector only for a deployed service, so each service deploys once in the default region and then moves to `europe-west4`.
 - **The Railway usage email alert is at USD 5, not USD 4.** It was set to 5 during the deploy, as the owner's setting; the USD 10 hard limit still caps the bill, and `docs/DEPLOY.md` keeps 4 as the suggestion for a new deployment.
+
+### README
+- **The README has more sections than the planned outline.** Spec: pitch, demo link, three-image strip, then fixed sections. Did: the same sections in the same order, plus a hero image, a four-image feature grid, a contents list, a formats table, the invoice lifecycle diagram, the architecture image (the Mermaid chart is kept in a collapsible block), "Tests and quality" and "Security and privacy". Why: the README is the project's public page; it now names the formats and standards people search for (XRechnung, ZUGFeRD, Factur-X, EN 16931, KoSIT) and shows the evaluation's limits next to its numbers. The only badge is the CI badge.
