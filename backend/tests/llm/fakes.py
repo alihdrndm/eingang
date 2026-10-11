@@ -61,7 +61,7 @@ def enabled_settings(**overrides: object) -> Settings:
         "LLM_SPENT_ELSEWHERE_USD": Decimal("0.00"),
         **overrides,
     }
-    return Settings(**values)
+    return Settings(_env_file=None, **values)  # never the developer's .env
 
 
 def install(monkeypatch: pytest.MonkeyPatch, **overrides: object) -> FakeSdk:

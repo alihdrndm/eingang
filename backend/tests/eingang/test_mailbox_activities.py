@@ -47,6 +47,7 @@ def _keep_test_connection(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def use_settings(monkeypatch: pytest.MonkeyPatch, *, enabled: bool = True) -> None:
     settings = Settings(
+        _env_file=None,
         MAILBOX_ENABLED=enabled,
         MAILBOX_HOST="imap.example.invalid",
         MAILBOX_USER="inbox@example.invalid",

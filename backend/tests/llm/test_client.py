@@ -284,7 +284,12 @@ def test_fenced_text_cannot_close_its_fence() -> None:
 
 def test_configuration_requires_the_openai_values_when_enabled() -> None:
     with pytest.raises(ValueError, match="OPENAI_MODEL is required"):
-        Settings(LLM_ENABLED=True, OPENAI_API_KEY="k", LLM_SPENT_ELSEWHERE_USD=Decimal(0))
+        Settings(
+            _env_file=None,
+            LLM_ENABLED=True,
+            OPENAI_API_KEY="k",
+            LLM_SPENT_ELSEWHERE_USD=Decimal(0),
+        )
     with pytest.raises(ValueError, match="LLM_SPENT_ELSEWHERE_USD is required"):
         settings(LLM_SPENT_ELSEWHERE_USD=None)
 
