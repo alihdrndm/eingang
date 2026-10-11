@@ -4,11 +4,12 @@ from collections.abc import Callable
 from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, NoReturn
 
 import httpx2 as httpx
 import openai
 import pytest
+from django.db import DataError
 from pydantic import BaseModel
 from temporalio.exceptions import ApplicationError
 
@@ -364,3 +365,26 @@ def test_the_real_sdk_cut_off_at_the_token_limit_is_paid_for(
     row = LlmCall.objects.get()
     assert (row.status, row.input_tokens, row.output_tokens) == ("error", 1000, 2500)
     assert row.cost > 0
+
+
+def test_a_nul_in_an_answer_is_removed_before_it_is_stored(
+    configure: Configure, sdk: FakeSdk
+) -> None:
+    # PostgreSQL refuses NUL in jsonb and text; gpt-5-nano once wrote one into evidence.
+    sdk.replies.append(reply(Answer(invoice_number="RE" + chr(0) + "A0-1")))
+    answer = client.call(request())
+    assert answer.invoice_number == "REA0-1"
+    assert LlmCache.objects.get().response_json == {"invoice_number": "REA0-1"}
+    assert LlmCall.objects.get().status == "ok"
+
+
+def test_a_failed_cache_write_keeps_the_ledger_row(
+    configure: Configure, sdk: FakeSdk, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(**_kwargs: object) -> NoReturn:
+        raise DataError("cannot store")
+
+    monkeypatch.setattr(LlmCache.objects, "get_or_create", refuse)
+    sdk.replies.append(reply())
+    assert client.call(request()).invoice_number == "RE-1"
+    assert LlmCall.objects.get().cost == Decimal("0.000122")

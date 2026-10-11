@@ -8,6 +8,7 @@ ledger row, and the ledger never holds prompt or response text. The SDK never re
 
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -15,7 +16,7 @@ from decimal import Decimal
 from typing import Any
 
 import openai
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 from django.db.models import F
 from pydantic import BaseModel, ValidationError
 
@@ -30,6 +31,8 @@ SDK_TIMEOUT_SECONDS = 90
 # One lock for every budgeted call: the check and the ledger row of a call happen while no
 # other call can pass the same check (calls are rare; serialising them is cheap).
 BUDGET_LOCK_KEY = 0x6C6C6D  # "llm"
+
+logger = logging.getLogger(__name__)
 
 
 def _default_sdk(settings: Settings) -> Any:  # boundary: the SDK client (or a test fake)
@@ -161,7 +164,7 @@ def _call_api[T: BaseModel](
     cached_tokens = int((usage.get("input_tokens_details") or {}).get("cached_tokens") or 0)
     output_tokens = int(usage.get("output_tokens") or 0)
     try:
-        parsed = raw.parse().output_parsed
+        parsed = _without_nul(request.output, raw.parse().output_parsed)
     except ValidationError:
         parsed = None
     complete = body.get("status") == "completed" and isinstance(parsed, request.output)
@@ -179,10 +182,38 @@ def _call_api[T: BaseModel](
     if not complete or not isinstance(parsed, request.output):
         # The cost is on record; an incomplete or unparsed answer is never used.
         return PermanentError("The LLM response was incomplete or did not match the schema.")
-    LlmCache.objects.get_or_create(
-        request_hash=request_hash, defaults={"response_json": parsed.model_dump(mode="json")}
-    )
+    try:
+        with transaction.atomic():  # a savepoint: a failed cache write keeps the ledger row
+            LlmCache.objects.get_or_create(
+                request_hash=request_hash,
+                defaults={"response_json": parsed.model_dump(mode="json")},
+            )
+    except DatabaseError:
+        logger.warning("An LLM answer for %s could not be cached", request.purpose)
     return parsed
+
+
+def _without_nul[T: BaseModel](output: type[T], parsed: T | None) -> T | None:
+    """The answer with NUL characters removed: PostgreSQL stores none in text or jsonb.
+
+    The model can write one: quoting evidence, it wrote a NUL followed by "A0" where the
+    document had a no-break space (U+00A0).
+    """
+    if not isinstance(parsed, output):
+        return parsed
+    dumped = parsed.model_dump(mode="json")
+    cleaned = _strip_nul(dumped)
+    return parsed if cleaned == dumped else output.model_validate(cleaned)
+
+
+def _strip_nul(value: object) -> object:
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, list):
+        return [_strip_nul(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _strip_nul(item) for key, item in value.items()}
+    return value
 
 
 def _failed(request: AnyRequest, settings: Settings, started: float) -> None:
