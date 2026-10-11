@@ -1,7 +1,6 @@
 """The sample precompute tool, on copies of the precomputed JSON and the fake SDK only."""
 
 import json
-import shutil
 from pathlib import Path
 
 import live_llm
@@ -24,10 +23,15 @@ def install(monkeypatch: pytest.MonkeyPatch, **overrides: object) -> fakes.FakeS
 
 @pytest.fixture
 def samples(tmp_path: Path) -> Path:
-    """A samples directory holding copies of S08.json and S10.json (never the real files)."""
+    """Copies of S08.json and S10.json as before the precompute (never the real files)."""
     (tmp_path / "precomputed").mkdir()
     for sample_id in ("S08", "S10"):
-        shutil.copy(PRECOMPUTED / f"{sample_id}.json", tmp_path / "precomputed")
+        data = json.loads((PRECOMPUTED / f"{sample_id}.json").read_text(encoding="utf-8"))
+        data.pop("extraction", None)
+        data.pop("comparison", None)
+        (tmp_path / "precomputed" / f"{sample_id}.json").write_text(
+            json.dumps(data, ensure_ascii=False), encoding="utf-8"
+        )
     return tmp_path
 
 
@@ -92,6 +96,7 @@ def test_writes_the_two_answers_then_skips_them_until_forced(
         "answer": compared(gross_total="1190.00").model_dump(mode="json"),
     }
     original = json.loads((PRECOMPUTED / "S08.json").read_text(encoding="utf-8"))
+    original.pop("extraction", None)
     assert {key: s08[key] for key in original} == original  # the rest is kept
     assert [request["max_output_tokens"] for request in sdk.requests] == [2500, 600]
     out = capsys.readouterr().out
