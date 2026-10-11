@@ -98,6 +98,17 @@ def test_the_setting_points_at_the_committed_location() -> None:
     assert repo / "evals" / "latest.json" == settings.EVALS_LATEST
 
 
+def test_the_committed_report_has_both_systems_and_parity() -> None:
+    from django.conf import settings
+
+    report = accuracy.LatestReport.model_validate_json(Path(settings.EVALS_LATEST).read_bytes())
+    ids = {system.id for system in report.systems}
+    assert "regex-baseline" in ids
+    assert any(system_id.startswith("llm:") for system_id in ids)
+    assert report.parity is not None
+    assert report.dataset.documents == 104
+
+
 SCHEMA_PAIRS: list[tuple[type[Serializer], type[BaseModel]]] = [
     (accuracy_api.AccuracyReportSerializer, accuracy.LatestReport),
     (accuracy_api.AccuracyDatasetSerializer, accuracy.Dataset),
