@@ -89,20 +89,21 @@ Create the services in this order: `temporal`, `worker`, `api`. The API's pre-de
    ```
 
    Railway's start command replaces the image's entry point (`temporal`), so the command names it. Without it the deploy fails with "The executable `server` could not be found".
-4. **Settings → Deploy → Restart Policy**: On Failure. **Region**: `europe-west4` (shown as "EU West (Amsterdam)"; Railway offers the region selector only after a service's first deployment, so deploy once, then change it. An empty volume moves with it).
+4. **Settings → Deploy → Restart Policy**: On Failure.
 5. Add a volume: right-click the service (or the command palette) → **Attach volume**, mount path `/data`.
 6. **Variables**: add `RAILWAY_RUN_UID` = `0`. The image runs as a non-root user and Railway volumes belong to root; without this the server cannot write `/data/temporal.db` (the same reason `compose.yaml` runs it as root; see `docs/DECISIONS.md`).
 7. Do **not** generate a public domain.
 8. Deploy.
+9. **Settings → Deploy → Region**: `europe-west4` (shown as "EU West (Amsterdam)"). Railway offers the region selector only after a service's first deployment; changing it redeploys the service, and the still-empty volume moves with it.
 
 **You should see:** the deployment is Active and stays running, and its log has no "unable to open database file" error. If the log says the server cannot listen on `::`, change `--ip ::` to `--ip 0.0.0.0`, redeploy, and record it in `docs/DECISIONS.md`.
 
 ### 2. The `worker` service
 
 1. **Create → GitHub Repo**, choose `alihdrndm/eingang`. Rename the service to `worker`.
-2. **Settings → Source**: leave **Root Directory** empty. The Dockerfiles copy `samples/` and `evals/latest.json`, so the build context must be the repository root.
+2. **Settings → Source**: leave **Root Directory** empty. Both Dockerfiles use the repository root as build context (the worker copies `backend/`; the API also copies `samples/` and `evals/latest.json`).
 3. **Variables**: add `RAILWAY_DOCKERFILE_PATH` = `backend/docker/worker.Dockerfile`, then every variable in [Environment variables](#environment-variables) marked for the worker.
-4. **Settings → Deploy**: Restart Policy On Failure; Region `europe-west4`; no healthcheck path; no start command (the image runs `python -m eingang.worker`).
+4. **Settings → Deploy**: Restart Policy On Failure; no healthcheck path; no start command (the image runs `python -m eingang.worker`). After the first deployment, set **Region** to `europe-west4`, as for `temporal`.
 5. Do **not** generate a public domain.
 
 **You should see:** the build log builds `backend/docker/worker.Dockerfile`; the deploy log shows `Stylesheets compiled in … s` and the deployment stays running. "Invalid configuration:" followed by a list means a variable is missing or wrong; every problem is listed at once.
@@ -122,7 +123,7 @@ Create the services in this order: `temporal`, `worker`, `api`. The API's pre-de
      It applies the migrations, loads the curated rule explanations and creates or updates the Temporal schedules. All three are idempotent and make no LLM call. The command is wrapped in `sh -c` because `&&` needs a shell. If it fails, the new deployment does not go live and the previous one keeps running.
    - **Custom Start Command**: leave empty. The image runs `gunicorn eingang.wsgi --workers 1 --threads 4 --bind [::]:$PORT`.
    - **Healthcheck Path**: `/healthz`.
-   - **Restart Policy**: On Failure. **Region**: `europe-west4`.
+   - **Restart Policy**: On Failure. After the first deployment, set **Region** to `europe-west4`, as for `temporal`.
 5. **Settings → Networking → Generate Domain**, target port `8010`. Note the host name, for example `eingang-api-production.up.railway.app`. This is `RAILWAY_API_HOST`.
 6. Set `ALLOWED_HOSTS` to `<that host name>,healthcheck.railway.app`. Railway's deploy healthcheck sends `Host: healthcheck.railway.app`; without it the healthcheck gets `400` and the deploy fails.
 
@@ -130,7 +131,11 @@ Create the services in this order: `temporal`, `worker`, `api`. The API's pre-de
 
 ### Environment variables
 
-Set these on the services named in the "Service" column. `api` and `worker` load the same settings class at start-up, and it refuses to start when a required value is missing, so the simplest way is to paste the same block into both services (**Variables → Raw Editor**) and then add the service-specific ones. "Default" is the value in `backend/src/eingang/config.py`; leave a variable unset to use it.
+Set these on the services named in the "Service" column. `api` and `worker` load the same settings class at start-up, and it refuses to start when a required value is missing, so the simplest way is:
+
+1. Put the four secrets (`DJANGO_SECRET_KEY`, `DATABASE_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`) once into the project's **Settings → Shared Variables**.
+2. In each of `api` and `worker`, paste the same block (**Variables → Raw Editor**) with the other values and a reference for each secret, for example `DATABASE_URL="${{shared.DATABASE_URL}}"`.
+3. Add the service-specific ones. "Default" is the value in `backend/src/eingang/config.py`; leave a variable unset to use it.
 
 **Railway-only**
 
@@ -180,7 +185,7 @@ Set these on the services named in the "Service" column. `api` and `worker` load
 
 ## Vercel
 
-1. Put the API host into the rewrite. In `frontend/vercel.json`, replace the placeholder `RAILWAY_API_HOST` with the host name from the Railway `api` step (host name only: no `https://`, no trailing slash), so the line reads, for example:
+1. Put the API host into the rewrite. In `frontend/vercel.json`, the `/api/:path*` destination points at this repository's own deployment; replace that host with the host name from your Railway `api` step (host name only: no `https://`, no trailing slash), so the line reads, for example:
 
    ```json
    "destination": "https://eingang-api-production.up.railway.app/api/:path*"
@@ -213,24 +218,27 @@ The response headers of the app's pages (not of `/api/...`, which come from the 
 
 Requests reach the API through Vercel and Railway's proxies, which add entries to `X-Forwarded-For`. The rate limits (per client IP) trust exactly `TRUSTED_PROXY_HOPS` entries from the right of that header. Too low, and every visitor shares one proxy address and one limit. Too high, and a visitor can choose their own key by sending the header. The right value can only be measured on the deployed stack.
 
+The value is measured on the Railway domain (`https://<RAILWAY_API_HOST>`). Requests through Vercel cannot be limited per client with any value (see **Known gap** below), so measuring there gives all `200` at every value.
+
 Use the public endpoint `GET /api/v1/accuracy`, which has the general limit of 120 requests per minute per client IP:
 
 1. Set `TRUSTED_PROXY_HOPS` on `api` to a candidate value, starting with `1`, and wait until the redeploy is Active.
-2. **Spoofing test.** From your computer (Git Bash on Windows), send 150 requests in parallel (one after another they take longer than the one-minute window), each with a different fake `X-Forwarded-For`:
+2. **Baseline.** From your computer (Git Bash on Windows), send 150 requests in parallel (one after another they take longer than the one-minute window):
 
    ```sh
    seq 1 150 | xargs -P 16 -I{} curl -s -o /dev/null -w "%{http_code}\n" \
-     -H "X-Forwarded-For: 198.51.100.{}" https://<project>.vercel.app/api/v1/accuracy | sort | uniq -c
+     https://<RAILWAY_API_HOST>/api/v1/accuracy | sort | uniq -c
    ```
 
-   Correct or too low: some answers are `429`, because the fake header did not change the key. Too high: all `150` are `200`. Run the same command without the `-H` option first: if that gives no `429` either, the counted entry changes on every request and no value is correct for this path.
-3. **Shared-key test.** Right after step 2, while your computer is still limited, open `https://<project>.vercel.app/api/v1/accuracy` from a different network (for example a phone on mobile data, Wi-Fi off). Correct: `200`. Too low: `429`, because both clients share one proxy address.
-4. If step 3 gave `429`, increase the value by one and repeat from step 1 (wait a minute between rounds). Use the smallest value for which step 2 shows `429`s and step 3 shows `200`.
-5. Record the value and the date in `docs/DECISIONS.md` (entry "Proxy hops for rate limits") and here:
+   Some answers must be `429`. If all are `200`, the counted entry changes on every request: increase the value by one and repeat from step 1.
+3. **Spoofing test.** Wait a minute, then run the same command with a different fake `X-Forwarded-For` on each request, by adding `-H "X-Forwarded-For: 198.51.100.{}"` after `curl`. Correct: some answers are `429`, because the fake header did not change the key. Too high: all `150` are `200`; decrease the value by one.
+4. **Shared-key test.** Right after step 3, while your computer is still limited, open `https://<RAILWAY_API_HOST>/api/v1/accuracy` from a different network (for example a phone on mobile data, Wi-Fi off). Correct: `200`. Too low: `429`, because both clients share one proxy address.
+5. If step 4 gave `429`, increase the value by one and repeat from step 1 (wait a minute between rounds). Use the smallest value for which steps 2 and 3 show `429`s and step 4 shows `200`.
+6. Record the value and the date in `docs/DECISIONS.md` (entry "Proxy hops for rate limits") and here:
 
-   Measured value: **2** (11 Oct 2026). Railway's edge appends an internal proxy address to `X-Forwarded-For`, so a request sent straight to the Railway domain arrives as `client, railway-proxy`. With 2 the key is the client, and a fake header lands further left and is ignored (150 spoofed requests: 120 × `200`, 30 × `429`). With 1 the key is the proxy address, which changes per request, so nothing is limited.
+   Measured value: **2** (11 Oct 2026). Railway's edge appends an internal proxy address to `X-Forwarded-For`, so a request sent straight to the Railway domain arrives as `client, railway-proxy`. With 2 the key is the client, and a fake header lands further left and is ignored (150 spoofed requests: 120 × `200`, 30 × `429`). With 1 the key is the proxy address, which changes per request, so nothing is limited. The shared-key test from a second network was not run.
 
-   **Known gap:** requests through Vercel were not limited at any value from 1 to 4 (150 requests, all `200`): on that path the counted entry changes per request. Limiting traffic through Vercel needs a code change (`docs/DECISIONS.md`, "Proxy hops for rate limits"). Until then the global sandbox cap (`SANDBOX_DAILY_LIMIT`) and `LLM_ENABLED=false` bound what a visitor can cost.
+   **Known gap:** requests through Vercel were not limited at any value from 1 to 4 (150 requests, all `200`): on that path the counted entry changes per request. This is the path every browser uses, so on the live demo the per-IP limits do not hold: sign-in (10 per minute) has no per-IP limit against password guessing, and one client can use up the global sandbox cap (`SANDBOX_DAILY_LIMIT`, 50 per day), which blocks the sandbox for everyone until the next day. Limiting traffic through Vercel needs a code change (`docs/DECISIONS.md`, "Proxy hops for rate limits"). Until then the global sandbox cap and `LLM_ENABLED=false` bound what a visitor can cost, and the demo has no accounts other than sandboxes.
 
 ## Pausing the demo
 
