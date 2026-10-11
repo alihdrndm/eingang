@@ -333,6 +333,8 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 - **Edits store IBAN, BIC and VAT IDs upper-case without spaces**, as parsing does, so an IBAN typed with spaces matches the supplier's history.
 - **ZIP entry names:** originals are stored as `originals/<Eingang-ID>-<name>`, with the name reduced to `[A-Za-z0-9._-]` (other characters become `_`). An uploaded name is untrusted and must be safe in every unzip tool; the Eingang-ID keeps it unique and traceable.
 
+## 2026-10-11 — M5
+
 ### The LLM client
 - **One lock for budgeted calls:** the budget check, the call and its ledger row run while a Postgres advisory lock is held, so two workers can't both pass the same last check. Calls are rare, so serialising them costs little.
 - **Ledger rows survive errors:** the call's transaction commits its ledger row first; the refusal or error is raised afterwards.
@@ -343,7 +345,7 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 - **Cache key:** model, prompt version, the exact two input messages (instructions, fenced data) and the output schema. `store=false` is sent, so OpenAI keeps no copy of the conversation.
 - **Fences:** a closing tag inside untrusted text is broken up (`</ document>`), so the text can't end its fence.
 - **Prompt version on results:** an LLM-extracted invoice stores `prompt_version` (new column); rule explanations already did.
-- **Model: `gpt-5-nano`, reasoning effort `minimal`**, confirmed by the owner on 11 Oct 2026. It is the cheapest of the 133 models the project key lists (`models.list`) on the official pricing page (developers.openai.com/api/docs/pricing, read 11 Oct 2026): $0.05 input, $0.005 cached input, $0.40 output per million tokens. Next were `gpt-4.1-nano` ($0.10 / $0.025 / $0.40) and `gpt-4o-mini` ($0.15 / $0.075 / $0.60). The smoke call returned complete, schema-valid answers for all three prompts. The model and prices are settings (`backend/.env.example`), not defaults in code.
+- **Model: `gpt-5-nano`, reasoning effort `minimal`**, confirmed by the owner on 11 Oct 2026. It is the cheapest of the 133 models the project key lists (`models.list`) on the official pricing page (developers.openai.com/api/docs/pricing, read 11 Oct 2026): $0.05 input, $0.005 cached input, $0.40 output per million tokens. Next were `gpt-4.1-nano` ($0.10 / $0.025 / $0.40) and `gpt-4o-mini` ($0.15 / $0.075 / $0.60). It supports Structured Outputs (strict JSON schema) on the Responses API, and the smoke call returned complete, schema-valid answers for all three prompts. Estimate shown to the owner before confirming: the M6 evaluation run (104 documents) at most about $0.11 by the budget formula, about $0.04 at the smoke call's real usage; `EVAL_BUDGET_USD` caps it at $0.75. The model and prices are settings (`backend/.env.example`), not defaults in code.
 
 ### Extraction grading (section 5)
 - A value the model left null gets no confidence entry, so C13 doesn't fire for it: a value that isn't printed isn't a doubtful value.
@@ -352,6 +354,9 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 - Numbers: day-first dates (month-first only when day-first is impossible), German and English amount formats, a single mark followed by exactly three digits means thousands. ISO 4217 is a fixed list of active codes.
 - Rule explanations longer than 300/200 characters are cut at a word break with "…", because strict Structured Outputs can't enforce a maximum length.
 - The comparison counts a PDF value only when its evidence is in the visible text; a value the model didn't find is not a difference.
+- **S08 is seeded without C13.** The recorded `gpt-5-nano` answer graded every field `high` (each value printed, with verbatim evidence), so the sample shows C04 and C11 and `needs_review`. The M5 acceptance line expects "C04, C11, C13s"; the sandbox table's "C13 for each low-confidence field" allows none. The sample keeps the real answer rather than a doctored one; the C13 path is tested with a synthetic answer (`tests/sandbox/test_seed.py`) and through the injection test.
+
+## 2026-10-10 — M6 to M8
 
 ### Evaluation (M6)
 - **Layout:** `evals/` is a package at the repository root, run from `backend/` as `python -m evals.<script>` with `PYTHONPATH=..` (poe tasks `eval-*`), so it uses the backend's environment and `.env`. The `latest.json` models live in `eingang/accuracy.py`, because application code never imports from `evals/`; `evals/schema.py` imports them.

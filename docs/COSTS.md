@@ -52,6 +52,7 @@ Total live spend recorded in the ledger so far: **$0.000572** (`uv run poe llm-s
 | Run | Date | Calls | Tokens (input / cached / output) | Cost |
 |-----|------|------:|----------------------------------|-----:|
 | Smoke call (`uv run poe llm-smoke`), gpt-5-nano, reasoning effort minimal | 11 Oct 2026 | 3 | 3,527 / 0 / 990 | $0.000572 |
+| Sample precompute (`uv run poe precompute-samples`): S08 extraction, S10 comparison | 11 Oct 2026 | 2 cache hits | 0 / 0 / 0 | $0.000000 |
 
 The smoke call cost 39% of its estimate ($0.001485): the estimate assumes every output token up to `max_output_tokens` is used, and the answers used 739 of 2,500 (extract), 178 of 600 (compare) and 73 of 400 (explain). The budgets are in `docs/DEPLOY.md` and `HANDOFF.md`: $2.00 lifetime per project, $1.50 per month, $0.10 per day for public demo use, 3 calls per sandbox. Estimates shown before the paid steps (gpt-5-nano prices, $0.05 input / $0.005 cached / $0.40 output per million tokens):
 
@@ -59,6 +60,6 @@ The smoke call cost 39% of its estimate ($0.001485): the estimate assumes every 
 |------|------------------:|
 | Smoke call (`uv run poe llm-smoke`, 3 calls) | $0.0015 |
 | Sample precompute (`uv run poe precompute-samples`) | $0.0013 (≈ $0 from the cache after the smoke call) |
-| Evaluation run (`uv run poe eval-llm`, 104 documents) | printed by the tool before it starts; capped at $0.75 |
+| Evaluation run (`uv run poe eval-llm`, 104 documents) | about $0.11 (about $0.04 at the smoke call's real usage); the tool prints its own estimate before it starts; capped at $0.75 |
 
 This file is updated with the real spend after each paid step.
