@@ -29,7 +29,7 @@ Eingang is not tax or legal advice. It checks published technical rules (EN 1693
 Full method and limits: [docs/EVALS.md](docs/EVALS.md).
 
 - **Validation parity with the official KoSIT validator:** the same verdict on **100%** of 176 files, and the same set of failed rules on **100%** (64 files excluded as not applicable or without a KoSIT scenario).
-- **Field extraction from PDF text**, on 104 ZUGFeRD corpus invoices (truth = the embedded XML): a label-based regex baseline gets the critical fields (number, date, gross total, IBAN) all right on **21.2%** of invoices (95% CI 13.5–28.8%); the application's LLM extraction with `gpt-5-nano` gets **65.4%** (95% CI 56.7–74.0%) for $0.033 in total, about $0.0003 per invoice.
+- **Field extraction from PDF text**, on 104 ZUGFeRD corpus invoices (truth = the embedded XML): a label-based regex baseline gets the critical fields (number, date, gross total, IBAN) all right on **21.2%** of invoices (95% CI 13.5–28.8%); the application's LLM extraction with `gpt-5-nano` gets **65.4%** (95% CI 56.7–74.0%) for $0.033 recorded (plus one failed call of about $0.0003 the ledger lost), about $0.0003 per invoice.
 
 ## Architecture
 

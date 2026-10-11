@@ -42,16 +42,16 @@ Identical files are counted once.
 | System | Critical fields correct | 95% CI | Cost |
 |--------|------------------------:|--------|-----:|
 | `regex-baseline` | 21.2% | 13.5%–28.8% | $0 |
-| `llm:gpt-5-nano` (prompt `extract_invoice.v1`) | 65.4% | 56.7%–74.0% | $0.0334 ($0.000321 per document) |
+| `llm:gpt-5-nano` (prompt `extract_invoice.v1`) | 65.4% | 56.7%–74.0% | $0.0334 recorded ($0.000321 per document), plus one failed call of about $0.0003 the ledger lost |
 
 - **`regex-baseline`** (`evals/baseline_regex.py`) uses label-anchored regular expressions for German, English and French invoices, with no LLM.
-  - Per field: gross total 93%, payable amount 93%, IBAN 91%, VAT ID 89%, tax total 88%, net total 84%, issue date 75%, invoice number 34%, seller name 32%, buyer name 25%, due date 9%.
+  - Per field: currency 99%, gross total 93%, payable amount 93%, IBAN 91%, VAT ID 89%, tax total 88%, net total 84%, issue date 75%, invoice number 34%, seller name 32%, buyer name 25%, due date 9%.
   - The invoice number is what holds the critical score down: most corpus PDFs print it inside a sentence ("Handelsrechnung (380) Nr. 471102 vom …") rather than after a label.
   - **Honesty note:** the first version tried labels in text order and missed common German labels. It scored 3.8%. Its labels were then extended after looking at the corpus layout ("Bruttosumme", "Steuerbetrag", "Nr. … vom", "Name:" under a party heading) and tried in priority order. That makes the baseline somewhat tuned to this corpus, which favours the baseline, not the LLM.
 - **`llm:gpt-5-nano`** runs the application's own extraction (prompt `extract_invoice.v1`, reasoning effort `minimal`, the same post-processing and grading) through the budgeted LLM client. One live run on 11 Oct 2026 (`evals/reports/2026-10-11-llm-gpt-5-nano.md`); latency p50 4.7 s, p95 6.0 s per document.
   - Per field: currency 99%, VAT ID 96%, IBAN 94%, payable amount 92%, invoice number 90%, seller name 87%, buyer name 86%, gross total 84%, net total 82%, issue date 78%, tax total 76%, due date 38%.
-  - What holds the critical score down: issue dates left empty (19% abstention) and gross totals (12.5% abstention). In every one of these cases the model itself answered null (19 dates, 12 totals); the grading dropped none. Reasoning effort `minimal` and `gpt-5-nano` are the cheapest settings; a stronger model or effort is the obvious next experiment.
-  - **Hallucination needs reading with the truth's limits.** The truth is the embedded XML, and a PDF can print what its XML leaves out. IBAN shows 24.6% (17 of 69 documents without an IBAN in the XML), but 16 of those 17 IBANs are printed in the PDF; the 17th is the model returning the text "null". VAT ID shows 100%, which is 2 of 2 documents, and both IDs are printed.
+  - What holds the critical score down: issue dates left empty (19.2% abstention, 20 documents) and gross totals (12.5%, 13 documents). In 19 and 12 of them the model itself answered null; the remaining one each is the failed call below. The grading dropped none. Reasoning effort `minimal` and `gpt-5-nano` are the cheapest settings; a stronger model or effort is the obvious next experiment.
+  - **Hallucination needs reading with the truth's limits.** The truth is the embedded XML, and a PDF can print what its XML leaves out. IBAN shows 24.6% (17 of 69 documents without an IBAN in the XML), but 15 of those 17 are IBANs printed in the PDF. One is a real error: a GLN from the line items (`4000050986428`) read as the IBAN. The 17th is the model returning the text "null", which the extraction stores as no value since this run. VAT ID shows 100%, which is 2 of 2 documents, and both IDs are printed.
   - One document (`zugferd_2p1_EN16931_Einfach_negativePaymentDue`) counts as abstaining on every field: the model wrote a NUL character into quoted evidence, PostgreSQL refused to cache the answer and the call failed. The client now removes NUL from answers (`docs/DECISIONS.md`); the run was not repeated.
 
 ## Validation parity
@@ -69,7 +69,7 @@ Identical files are counted once.
 
 Excluded files:
 - 49 match no KoSIT scenario;
-- 14 are not applicable for Eingang (MINIMUM, BASIC WL, legacy ZUGFeRD 1, XRechnung 2.x);
+- 14 are not applicable for Eingang (8 MINIMUM, 6 BASIC WL);
 - 1 is not an invoice Eingang accepts.
 
 ## Limits
@@ -77,6 +77,8 @@ Excluded files:
 - The corpus consists of sample invoices made by software vendors. They are cleaner than real-world scans and photos, and most share one vendor's layout. Accuracy on real supplier invoices will be lower.
 - PDF text order can differ from the visual order, which hurts any text-based reader; the LLM sees the same text the baseline sees.
 - 104 documents give wide confidence intervals: the 95% interval of the baseline spans about 15 points.
+- **The documents are not independent.** Matched on invoice number, gross total, seller and issue date, the 104 documents are 33 distinct invoices; 95 share their invoice with at least one other (the same vendor samples as ZUGFeRD 2.0, ZUGFeRD 2.1 and XML-Rechnung versions, and in several profiles), and 5 have the same text as another. The bootstrap treats every document as independent, so the true intervals are wider than shown, and one invoice's error can count up to three times.
+- **Parity covers what KoSIT has a scenario for.** The 49 files without a KoSIT scenario include every BASIC and EXTENDED file and the EN 16931 UBL files in `XML-Rechnung/UBL` that are not XRechnung. The 100% therefore covers EN 16931 CII and XRechnung files; Eingang's BASIC and EXTENDED verdicts have no reference here.
 - English and French are 10 documents together, too few to report per language.
 
 ## Rerunning
