@@ -81,5 +81,20 @@
     ],
     "notes": []
   },
-  "text": "--- page 1 ---\nSpedition Albers GmbH\nHafenweg 21, 01139 Dresden\nUSt-IdNr.: DE149203761\nAn: Holzwerk Brandt GmbH\nSägewerkstraße 12, 04129 Leipzig\nUSt-IdNr.: DE291746055\nRechnung\nRechnungsnummer: SA/26/1160\nRechnungsdatum: 24.02.2026\nIhre Referenz: HB-EINKAUF-2026\nPos. Beschreibung Menge Einzelpreis Netto\n1 Transport Leipzig - Dresden, Teilladung 1 1.008,40 EUR 1.008,40 EUR\nNetto: 1.008,40 EUR\nUSt 19 %: 191,60 EUR\nBrutto: 1.190,00 EUR\nZahlbetrag: 1.190,00 EUR\nZahlungsbedingungen: Zahlbar innerhalb 30 Tagen netto\nIBAN: DE95 8505 0300 0221 0044 55"
+  "text": "--- page 1 ---\nSpedition Albers GmbH\nHafenweg 21, 01139 Dresden\nUSt-IdNr.: DE149203761\nAn: Holzwerk Brandt GmbH\nSägewerkstraße 12, 04129 Leipzig\nUSt-IdNr.: DE291746055\nRechnung\nRechnungsnummer: SA/26/1160\nRechnungsdatum: 24.02.2026\nIhre Referenz: HB-EINKAUF-2026\nPos. Beschreibung Menge Einzelpreis Netto\n1 Transport Leipzig - Dresden, Teilladung 1 1.008,40 EUR 1.008,40 EUR\nNetto: 1.008,40 EUR\nUSt 19 %: 191,60 EUR\nBrutto: 1.190,00 EUR\nZahlbetrag: 1.190,00 EUR\nZahlungsbedingungen: Zahlbar innerhalb 30 Tagen netto\nIBAN: DE95 8505 0300 0221 0044 55",
+  "comparison": {
+    "prompt_version": "compare_pdf_xml.v1",
+    "answer": {
+      "invoice_number": "SA/26/1160",
+      "invoice_number_evidence": "Rechnungsnummer: SA/26/1160",
+      "issue_date": "2026-02-24",
+      "issue_date_evidence": "Rechnungsdatum: 24.02.2026",
+      "gross_total": "1190.00",
+      "gross_total_evidence": "Brutto: 1.190,00 EUR",
+      "payable_amount": "1190.00",
+      "payable_amount_evidence": "Zahlbetrag: 1.190,00 EUR",
+      "payee_iban": "DE95 8505 0300 0221 0044 55",
+      "payee_iban_evidence": "IBAN: DE95 8505 0300 0221 0044 55"
+    }
+  }
 }

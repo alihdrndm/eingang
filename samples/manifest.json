@@ -85,8 +85,8 @@
       "received_offset_minutes": 3796,
       "format_label": "Plain PDF",
       "expected_checks": [
-        "C11",
-        "C12"
+        "C04",
+        "C11"
       ],
       "expected_status": "needs_review"
     },
@@ -109,9 +109,10 @@
       "received_offset_minutes": 5508,
       "format_label": "ZUGFeRD · EN 16931",
       "expected_checks": [
-        "C04"
+        "C04",
+        "C09"
       ],
-      "expected_status": "awaiting_approval"
+      "expected_status": "needs_review"
     },
     {
       "id": "S11",

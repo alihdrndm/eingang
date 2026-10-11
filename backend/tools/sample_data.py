@@ -400,8 +400,8 @@ SAMPLES = [
             ],
         ),
         format_label="Plain PDF",
-        # Until the LLM layer (M5): no extraction, so no supplier yet (spec section 12).
-        expected_checks=["C11", "C12"],
+        # The precomputed extraction graded every field high, so no C13 (spec section 12).
+        expected_checks=["C04", "C11"],
         expected_status="needs_review",
     ),
     Sample(
@@ -435,9 +435,9 @@ SAMPLES = [
         facturx_level="en16931",
         printed_gross=Decimal("1190.00"),
         format_label="ZUGFeRD · EN 16931",
-        # Until the LLM layer (M5): the PDF is not compared yet (spec section 12).
-        expected_checks=["C04"],
-        expected_status="awaiting_approval",
+        # The precomputed comparison finds the printed 1190.00 against 1200.00 (C09).
+        expected_checks=["C04", "C09"],
+        expected_status="needs_review",
     ),
     Sample(
         id="S11",
