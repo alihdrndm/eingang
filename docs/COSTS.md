@@ -31,17 +31,17 @@ Estimate for this project, always on, from the measurements above (memory conver
 
 About **$5.61 per month** of usage when all three services run all month. The Temporal volume (its SQLite file) is small; volume storage at $0.15 per GB is not measured separately. Egress is not measured.
 
-The scheduled work (one maintenance run per day, a few sandbox seeds per day) was not measured separately; at these sizes it adds seconds of CPU per day.
+The scheduled work (one maintenance run per day, up to ten sandbox seeds per day) was not measured separately and is not in the estimate.
 
-**Stop rule (HANDOFF "Deployment"):** this estimate is above $4.50 per month on its own, before any other service the owner already runs on Railway. The default is to keep the three services **paused** except while the owner is using the deployed app (`docs/DEPLOY.md`, "Pausing services"). Other options: share one Temporal server with another project, or deploy only for demos.
+**Stop rule (HANDOFF "Deployment"):** this estimate is above $4.50 per month on its own, before any other service the owner already runs on Railway. The default is to keep the three services **paused** except while the owner is using the deployed app (`docs/DEPLOY.md`, "Pausing the demo"). Other options: share one Temporal server with another project, or deploy only for demos.
 
-**Measured on Railway:** the first deploy (all three services in EU West, 11 Oct 2026) used **$0.05** of the billing cycle's $5.00 included usage when the deploy checks were finished. The workspace has a hard compute limit of $10 and an email alert at $5.
+**Measured on Railway:** on 11 Oct 2026, after the first deploy (all three services in EU West) and the deploy checks, Railway's usage page showed **$0.0199** for the `eingang` project in the billing cycle (memory most of it). The workspace has a compute hard limit of $10 ("All resources stopped at this amount") and an email alert at $5.
 
 ## Supabase
 
 Free plan, from https://supabase.com/pricing (10 Oct 2026): 500 MB database per project, 1 GB file storage, 5 GB egress, projects paused after 1 week of inactivity, at most 2 active free projects.
 
-Measured: 9.4 MB of database and 972 KB of files per sandbox. Sandboxes are deleted after 24 hours by the daily maintenance, so the free limits are far away at demo use.
+Measured locally: 9.4 MB of database in total after one sandbox, and 972 KB of files per sandbox. Sandboxes are deleted after 24 hours by the daily maintenance, so the free limits are far away at demo use.
 
 ## Vercel
 

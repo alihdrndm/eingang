@@ -9,7 +9,7 @@ Statements in the specification that were **not** verified against a real system
 | [E3](#e3) | BASIC and EXTENDED are checked against the EN 16931 rules only. | Assumed |
 | [E5](#e5) | XRechnung 1.x and 2.x are checked against the EN 16931 rules only. | Assumed |
 | [H1](#h1) | The daily maintenance keeps the free Supabase project from pausing; a paused project can be restored for free. | Assumed |
-| [H2](#h2) | Railway's lowest usage hard limit is USD 10 per month. | Assumed; check on Railway's usage settings page before deploying |
+| [H2](#h2) | Railway's lowest usage hard limit is USD 10 per month. | Partly verified (11 Oct 2026): a USD 10 limit is set and stops all resources; the minimum is not shown |
 
 There is no E4 or H3: the specification marks no other item as assumed.
 
@@ -78,3 +78,4 @@ There is no E4 or H3: the specification marks no other item as assumed.
 - **What the UI says:** nothing in the app; `docs/DEPLOY.md` step 0 tells the owner to check the page for the current minimum.
 - **Risk:** if the minimum is higher, the cap on the bill is higher too.
 - **How to verify:** open Railway's workspace usage settings page and read the minimum hard limit before deploying.
+- **Checked (11 Oct 2026):** Railway's usage page (**Usage → Update limits**) shows a compute hard limit of USD 10, described as "All resources stopped at this amount", and an email alert at USD 5 (`docs/DEPLOY.md` suggests USD 4). The dialog does not state the lowest allowed value, so that part stays assumed.
