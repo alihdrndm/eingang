@@ -229,7 +229,10 @@ const SKELETON_COLUMNS: SkeletonColumn[] = [
           <dt>Correct</dt>
           <dd>The value matches the XML.</dd>
           <dt>Invented</dt>
-          <dd>A value read where the XML has none. It may still be printed on the PDF.</dd>
+          <dd>
+            A value read where the XML has none. It may still be printed on the
+            PDF.
+          </dd>
           <dt>Missing</dt>
           <dd>Nothing read where the XML has a value.</dd>
           <dt>—</dt>
