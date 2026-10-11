@@ -7,7 +7,7 @@
 **Live demo: [eingang.vercel.app](https://eingang.vercel.app).** Choose **Open the sandbox** to get a private inbox with twelve sample invoices, which is deleted after 24 hours. AI extraction of new uploads is switched off in the demo. The demo runs on paid hosting and may be paused; the images below show it.
 
 <p align="center">
-  <img src="docs/media/hero-poster.png" alt="Eingang overview: stamped incoming invoices, the inbox with e-invoice verdicts, a resolved bank account change, approval on a phone and the export folder for the tax advisor" width="100%">
+  <img src="docs/media/hero.gif" alt="Animated overview of Eingang: incoming invoices are stamped and sorted into the inbox, a changed bank account is checked and resolved, the invoice is approved on a phone and exported for the tax advisor" width="100%">
 </p>
 
 <table>
