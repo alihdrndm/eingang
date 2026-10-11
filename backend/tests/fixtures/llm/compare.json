@@ -1,0 +1,27 @@
+{
+  "feature": "compare",
+  "prompt_version": "compare_pdf_xml.v1",
+  "model": "gpt-5-nano",
+  "reasoning_effort": "minimal",
+  "max_output_tokens": 600,
+  "usage": {
+    "status": "completed",
+    "input_tokens": 775,
+    "cached_tokens": 0,
+    "output_tokens": 178,
+    "cache_hit": false,
+    "cost_usd": "0.000110"
+  },
+  "response": {
+    "invoice_number": "SA/26/1160",
+    "invoice_number_evidence": "Rechnungsnummer: SA/26/1160",
+    "issue_date": "2026-02-24",
+    "issue_date_evidence": "Rechnungsdatum: 24.02.2026",
+    "gross_total": "1190.00",
+    "gross_total_evidence": "Brutto: 1.190,00 EUR",
+    "payable_amount": "1190.00",
+    "payable_amount_evidence": "Zahlbetrag: 1.190,00 EUR",
+    "payee_iban": "DE95 8505 0300 0221 0044 55",
+    "payee_iban_evidence": "IBAN: DE95 8505 0300 0221 0044 55"
+  }
+}

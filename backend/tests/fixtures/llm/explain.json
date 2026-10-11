@@ -1,0 +1,19 @@
+{
+  "feature": "explain",
+  "prompt_version": "explain_rule.v1",
+  "model": "gpt-5-nano",
+  "reasoning_effort": "minimal",
+  "max_output_tokens": 400,
+  "usage": {
+    "status": "completed",
+    "input_tokens": 317,
+    "cached_tokens": 0,
+    "output_tokens": 73,
+    "cache_hit": false,
+    "cost_usd": "0.000045"
+  },
+  "response": {
+    "plain_text": "The invoice is missing the Buyer reference (BT-10). This field must be included for a valid German electronic invoice.",
+    "fix_hint": "Ask the supplier to resend the invoice with the Buyer reference (BT-10) included."
+  }
+}
