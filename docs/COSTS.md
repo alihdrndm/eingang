@@ -47,7 +47,13 @@ The frontend is a static build behind Vercel's rewrites; it runs on Vercel's fre
 
 ## OpenAI
 
-Total live spend recorded in the ledger so far: **$0.00** (no live call has been made; `uv run poe llm-spend` prints the current total). The budgets are in `docs/DEPLOY.md` and `HANDOFF.md`: $2.00 lifetime per project, $1.50 per month, $0.10 per day for public demo use, 3 calls per sandbox. Estimates shown before the paid steps (gpt-5-nano prices, $0.05 input / $0.005 cached / $0.40 output per million tokens):
+Total live spend recorded in the ledger so far: **$0.000572** (`uv run poe llm-spend` prints the current total).
+
+| Run | Date | Calls | Tokens (input / cached / output) | Cost |
+|-----|------|------:|----------------------------------|-----:|
+| Smoke call (`uv run poe llm-smoke`), gpt-5-nano, reasoning effort minimal | 11 Oct 2026 | 3 | 3,527 / 0 / 990 | $0.000572 |
+
+The smoke call cost 39% of its estimate ($0.001485): the estimate assumes every output token up to `max_output_tokens` is used, and the answers used 739 of 2,500 (extract), 178 of 600 (compare) and 73 of 400 (explain). The budgets are in `docs/DEPLOY.md` and `HANDOFF.md`: $2.00 lifetime per project, $1.50 per month, $0.10 per day for public demo use, 3 calls per sandbox. Estimates shown before the paid steps (gpt-5-nano prices, $0.05 input / $0.005 cached / $0.40 output per million tokens):
 
 | Step | Estimated maximum |
 |------|------------------:|
