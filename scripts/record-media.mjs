@@ -132,11 +132,19 @@ async function settle(page) {
   await page.waitForTimeout(2500); // the design runtime, icons and nested frames
 }
 
-async function shot(browser, design, file, out, width, height, query = "") {
+async function shot(browser, design, file, out, width, height, query = "", texts = {}) {
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
   await page.goto(`${design}/${encodeURI(file)}${query}`);
   await settle(page);
   await reframe(page, file);
+  // Fills in text the design leaves as a placeholder, such as the end card's links.
+  await page.evaluate((replacements) => {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.textContent.trim();
+      if (text in replacements) node.textContent = replacements[text];
+    }
+  }, texts);
   await page.screenshot({ path: out, clip: { x: 0, y: 0, width, height } });
   await page.close();
 }
@@ -176,13 +184,23 @@ async function hero(browser, design) {
   }
 }
 
+/** Scrolls a control into the middle of its own pane; the window itself stays put. */
+async function scrollPane(page, locator) {
+  await locator.evaluate((node) => node.scrollIntoView({ block: "center", behavior: "smooth" }));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => window.scrollTo(0, 0));
+}
+
 // The storyboard of design/export/Media Demo Storyboard.dc.html: cards are rendered
-// frames, app shots are recorded live against the running app with the sandbox.
+// frames, app shots are recorded live against the running app with the sandbox. An app
+// shot calls ready() once its screen is shown; its clip, and so its caption, starts there.
 const SHOTS = [
   { card: ["Media Demo Title.dc.html", ""], seconds: 4 },
   {
-    app: async (page) => {
+    app: async (page, ready) => {
       await page.goto(APP);
+      await page.getByRole("button", { name: "Open the sandbox" }).first().waitFor();
+      await ready();
       await page.getByRole("button", { name: "Open the sandbox" }).first().click();
       await page.waitForURL(/\/app\/inbox/);
     },
@@ -191,8 +209,10 @@ const SHOTS = [
   },
   { card: ["Media Demo Chapters.dc.html", "?ch=1"], seconds: 3 },
   {
-    app: async (page) => {
+    app: async (page, ready) => {
       await page.getByRole("tab", { name: /^All/ }).click();
+      await page.getByRole("row").filter({ hasText: "RE-2026-0413" }).waitFor();
+      await ready();
       await page.mouse.move(1500, 300);
       await page.mouse.move(1500, 800, { steps: 40 });
     },
@@ -200,7 +220,8 @@ const SHOTS = [
     caption: "Twelve invoices, each with a verdict",
   },
   {
-    app: async (page) => {
+    app: async (page, ready) => {
+      await ready();
       await page.getByRole("button", { name: "Upload invoices" }).first().click();
       await page.setInputFiles('input[type="file"]', SAMPLE_PDF);
       await page.waitForTimeout(8000);
@@ -211,20 +232,60 @@ const SHOTS = [
   },
   { card: ["Media Demo Chapters.dc.html", "?ch=2"], seconds: 3 },
   {
-    app: async (page) => {
-      await page.getByRole("tab", { name: /^All/ }).click();
-      await page.getByRole("row").filter({ hasText: "RE-2026-0413" }).click();
-      await page.getByRole("button", { name: "Show official message" }).first().click();
+    app: async (page, ready) => {
+      await page.goto(`${APP}/app/inbox?tab=all`);
+      // The seeded plain PDF (sample S08), not the copy uploaded in the shot before.
+      await page.getByRole("row").filter({ hasText: "Druckerei Sommer" }).last().click();
+      await page.getByRole("heading", { name: "Fields" }).waitFor();
+      await ready();
+      const eye = page.getByRole("button", { name: "Show where IBAN came from" });
+      await scrollPane(page, eye);
+      await eye.click();
+      const evidence = page.getByRole("group", { name: "Where IBAN came from" });
+      await evidence.waitFor();
       await page.waitForTimeout(2500);
+      await evidence.getByRole("button", { name: "Show in document" }).click();
+      await page.evaluate(() => window.scrollTo(0, 0));
+    },
+    seconds: 9,
+    caption: "Every AI value shows its source",
+  },
+  {
+    app: async (page, ready) => {
+      const edit = page.getByRole("button", { name: "Edit Supplier VAT ID" });
+      await scrollPane(page, edit);
+      await ready();
+      await edit.click();
+      await page.getByLabel("Supplier VAT ID").fill("");
+      await page.getByLabel("Supplier VAT ID").pressSequentially("DE360588120", { delay: 80 });
+      await page.waitForTimeout(600);
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.evaluate(() => window.scrollTo(0, 0));
+    },
+    seconds: 5,
+    caption: "Low confidence? Type it from paper",
+  },
+  { card: ["Media Demo Chapters.dc.html", "?ch=3"], seconds: 3 },
+  {
+    app: async (page, ready) => {
+      await page.goto(`${APP}/app/inbox?tab=all`);
+      await page.getByRole("row").filter({ hasText: "RE-2026-0413" }).click();
+      await page.getByRole("button", { name: "Show official message" }).first().waitFor();
+      await ready();
+      await page.getByRole("button", { name: "Show official message" }).first().click();
+      await page.waitForTimeout(2000);
+      await page.getByRole("button", { name: "Show in XML" }).first().click();
+      await page.evaluate(() => window.scrollTo(0, 0));
     },
     seconds: 7,
     caption: "Rule BR-DE-15, explained in plain English",
   },
-  { card: ["Media Demo Chapters.dc.html", "?ch=3"], seconds: 3 },
   {
-    app: async (page) => {
+    app: async (page, ready) => {
       await page.goto(`${APP}/app/inbox?tab=all`);
       await page.getByRole("row").filter({ hasText: "BN-88290" }).click();
+      await page.locator(".card").filter({ hasText: "C05" }).getByRole("button", { name: "Resolve…" }).waitFor();
+      await ready();
       await page.locator(".card").filter({ hasText: "C05" }).getByRole("button", { name: "Resolve…" }).click();
       await page.getByLabel("Note").pressSequentially("Checked with the supplier on the number in our files.", { delay: 40 });
       await page.getByRole("button", { name: "Resolve check" }).click();
@@ -235,23 +296,27 @@ const SHOTS = [
   },
   { card: ["Media Demo Chapters.dc.html", "?ch=4"], seconds: 3 },
   {
-    app: async (page) => {
+    app: async (page, ready) => {
       await page.goto(`${APP}/app/approvals`);
+      await page.locator("li, tr").filter({ hasText: "BN-88290" }).first().waitFor();
+      await ready();
       await page.locator("li, tr").filter({ hasText: "BN-88290" }).first().getByRole("button", { name: "Approve" }).click();
     },
     seconds: 6,
     caption: "Then someone approves it",
   },
   {
-    app: async (page) => {
+    app: async (page, ready) => {
       await page.goto(`${APP}/app/exports`);
+      await page.locator("label").filter({ hasText: "CSV, one row per invoice" }).first().waitFor();
+      await ready();
       await page.locator("label").filter({ hasText: "CSV, one row per invoice" }).filter({ hasNotText: "invoice line" }).click();
       await page.getByRole("button", { name: /^Export \d+ invoices?$/ }).click();
     },
     seconds: 6,
     caption: "One CSV for the tax advisor",
   },
-  { card: ["Media Demo End.dc.html", ""], seconds: 4 },
+  { card: ["Media Demo End.dc.html", "", { "sandbox URL": "eingang.vercel.app", "GitHub repository URL": "github.com/alihdrndm/eingang" }], seconds: 4 },
 ];
 
 /** A caption as a transparent PNG, in the self-hosted Instrument Sans (no font CDN). */
@@ -277,30 +342,46 @@ async function demo(browser, design) {
     acceptDownloads: true,
   });
   const app = await context.newPage();
+  const recordingStart = Date.now(); // the page's video starts with the page, not with the first shot
   const parts = [];
   for (const [index, shotSpec] of SHOTS.entries()) {
     const segment = path.join(TMP, `seg-${String(index + 1).padStart(2, "0")}.mp4`);
     if (shotSpec.card) {
       const png = path.join(TMP, `card-${index + 1}.png`);
-      await shot(browser, design, shotSpec.card[0], png, 1920, 1080, shotSpec.card[1]);
+      await shot(browser, design, shotSpec.card[0], png, 1920, 1080, shotSpec.card[1], shotSpec.card[2]);
       ffmpeg(["-loop", "1", "-t", String(shotSpec.seconds), "-i", png, "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p", segment]);
     } else {
-      const started = Date.now();
-      await shotSpec.app(app);
+      let started;
+      await shotSpec.app(app, async () => {
+        await app.waitForLoadState("networkidle");
+        await app.waitForTimeout(500);
+        started = Date.now();
+      });
+      if (!started) throw new Error(`Shot ${index + 1} ("${shotSpec.caption}") never showed its screen`);
+      // A slow shot (opening a sandbox seeds twelve invoices) keeps its last seconds.
       const used = (Date.now() - started) / 1000;
-      if (used < shotSpec.seconds) await app.waitForTimeout((shotSpec.seconds - used) * 1000);
+      if (used > shotSpec.seconds) started = Date.now() - shotSpec.seconds * 1000;
+      else await app.waitForTimeout((shotSpec.seconds - used) * 1000);
+      await app.waitForTimeout(300);
       shotSpec.span = [started, Date.now()];
     }
     parts.push({ shotSpec, segment });
   }
-  const recordingStart = SHOTS.find((item) => item.span).span[0];
+  const recordingEnd = Date.now();
   await context.close();
   const raw = path.join(TMP, "app", readdirSync(path.join(TMP, "app")).find((name) => name.endsWith(".webm")));
+  // The browser starts writing the video a moment after the page opens; without this
+  // offset every clip ends on the first second or two of the next screen.
+  const length = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", raw]).toString());
+  const measured = (recordingEnd - recordingStart) / 1000 - length;
+  // The webm's duration is not always written; one second matches what the frames show.
+  const lag = Number.isFinite(measured) && measured > 0.2 ? measured : 1;
+  console.log(`video ${length} s, wall ${((recordingEnd - recordingStart) / 1000).toFixed(2)} s, lag ${lag.toFixed(2)} s`);
   for (const { shotSpec, segment } of parts) {
     if (!shotSpec.span) continue;
     const caption = segment.replace(".mp4", "-cap.png");
     await captionPng(browser, shotSpec.caption, caption);
-    const from = ((shotSpec.span[1] - recordingStart) / 1000 - shotSpec.seconds).toFixed(2);
+    const from = Math.max(0, (shotSpec.span[0] - recordingStart) / 1000 - lag).toFixed(2);
     ffmpeg(["-ss", from, "-t", String(shotSpec.seconds), "-i", raw, "-i", caption, "-filter_complex", "[0:v]fps=30,scale=1920:1080[v];[v][1:v]overlay=0:0", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", segment]);
   }
   const list = path.join(TMP, "list.txt");
@@ -317,6 +398,10 @@ try {
   if (what === "stills" || what === "all") await stills(browser, design);
   if (what === "hero" || what === "all") await hero(browser, design);
   if (what === "demo" || what === "all") await demo(browser, design);
+} catch (error) {
+  // Print the real failure first: cleaning up after a broken recording can fail as well.
+  console.error(error);
+  process.exitCode = 1;
 } finally {
   await browser.close();
   server.close();
