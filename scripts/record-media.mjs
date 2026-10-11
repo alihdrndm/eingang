@@ -79,6 +79,53 @@ const STILLS = [
   ["Media Feature Approval.dc.html", "feature-approval.png", 1200, 675],
 ];
 
+// The feature pages frame the app screens with fixed offsets that do not match the
+// exported screens (the evidence frame shows the empty foot of the document pane, the
+// inbox frame starts past the supplier column, the approvals table is wider than its
+// frame). Each entry re-frames the nth iframe on the page: the screen area from x, y
+// (screen pixels) fills the frame's width at the iframe's own viewport size; `scroll`
+// scrolls the pane holding that heading so the heading sits at the top of it.
+const FRAMES = {
+  "Media Feature Verdicts.dc.html": [{ x: 96, y: 104, viewport: [1440, 900] }],
+  "Media Feature Evidence.dc.html": [{ x: 96, y: 250, viewport: [1440, 900], scroll: "Fields" }],
+  "Media Feature Approval.dc.html": [
+    { x: 96, y: 56, viewport: [1440, 900] },
+    { x: 96, y: 56, viewport: [1440, 900] },
+  ],
+};
+
+async function reframe(page, file) {
+  const frames = FRAMES[file];
+  if (!frames) return;
+  await page.evaluate((specs) => {
+    const iframes = document.querySelectorAll("iframe");
+    specs.forEach((spec, index) => {
+      const iframe = iframes[index];
+      const box = iframe.parentElement.clientWidth;
+      const scale = box / (spec.viewport[0] - spec.x);
+      Object.assign(iframe.style, {
+        left: `${-spec.x * scale}px`,
+        top: `${-spec.y * scale}px`,
+        width: `${spec.viewport[0]}px`,
+        height: `${spec.viewport[1]}px`,
+        transform: `scale(${scale})`,
+      });
+    });
+  }, frames);
+  await page.waitForTimeout(500);
+  const children = page.mainFrame().childFrames();
+  for (const [index, spec] of frames.entries()) {
+    if (!spec.scroll) continue;
+    await children[index].evaluate((heading) => {
+      const target = [...document.querySelectorAll("h1, h2, h3, h4")].find((node) => node.textContent.trim() === heading);
+      let pane = target?.parentElement;
+      while (pane && !(pane.scrollHeight > pane.clientHeight && /auto|scroll/.test(getComputedStyle(pane).overflowY))) pane = pane.parentElement;
+      if (pane) pane.scrollTop += target.getBoundingClientRect().top - pane.getBoundingClientRect().top - 16;
+    }, spec.scroll);
+  }
+  await page.waitForTimeout(300);
+}
+
 async function settle(page) {
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => document.fonts.ready);
@@ -89,6 +136,7 @@ async function shot(browser, design, file, out, width, height, query = "") {
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
   await page.goto(`${design}/${encodeURI(file)}${query}`);
   await settle(page);
+  await reframe(page, file);
   await page.screenshot({ path: out, clip: { x: 0, y: 0, width, height } });
   await page.close();
 }
