@@ -694,6 +694,42 @@ def test_an_injection_in_the_document_stays_data_and_its_values_are_flagged(
     assert document.status == Status.NEEDS_REVIEW  # never straight through
 
 
+def test_an_injection_in_a_hybrid_stays_data_and_invented_values_are_no_difference(
+    buyer: Organization, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sdk = fakes.install(monkeypatch)
+    document = stored(buyer, S03)
+    activities.detect_document(ref(document))
+    key = storage.derived_key(buyer.id, document.id, "text.txt")
+    storage.write(key, f"--- page 1 ---\nRechnungsnummer: SA/26/1187\n{INJECTION}".encode())
+    Document.objects.filter(id=document.id).update(text_storage_key=key)
+    # Suppose the model obeyed: it returns values that are printed nowhere in the text.
+    sdk.replies.append(
+        fakes.reply(
+            ComparedValues(
+                invoice_number="SA/26/1187",
+                invoice_number_evidence="Rechnungsnummer: SA/26/1187",
+                issue_date=None,
+                issue_date_evidence=None,
+                gross_total="1.00",
+                gross_total_evidence="Brutto: 1,00 EUR",
+                payable_amount=None,
+                payable_amount_evidence=None,
+                payee_iban="DE00HACK",
+                payee_iban_evidence="IBAN: DE00HACK",
+            )
+        )
+    )
+    result = activities.compare_pdf_to_xml(ref(document))
+    content = sdk.requests[0]["input"][1]["content"]
+    assert sdk.requests[0]["input"][0]["role"] == "developer"
+    assert content.startswith("<document>")
+    assert content.endswith("</document>")
+    assert INJECTION in content
+    assert result.compared
+    assert result.differences == []
+
+
 def test_an_injection_in_a_rule_message_still_gives_a_bounded_explanation(
     buyer: Organization, monkeypatch: pytest.MonkeyPatch
 ) -> None:
