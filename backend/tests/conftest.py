@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 import pytest
 from django.core.cache import cache
@@ -11,6 +11,8 @@ from django.test import Client, override_settings
 
 from accounts.models import Organization, User
 from eingang import clock
+from eingang.config import Settings
+from llm import client as llm_client
 
 if TYPE_CHECKING:
     # Only django-stubs defines this type; at run time the client returns an HttpResponse.
@@ -36,6 +38,19 @@ def _temporary_document_storage(tmp_path_factory: pytest.TempPathFactory) -> Ite
     }
     with override_settings(STORAGES={**storages.backends, "documents": documents}):
         yield
+
+
+@pytest.fixture(autouse=True)
+def _no_live_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The LLM client never reads the developer's .env (which may switch it on with a real
+    # key) and never builds the real SDK; tests that call it install a fake (tests/llm).
+    test_settings = Settings(_env_file=None)
+    monkeypatch.setattr(llm_client, "get_settings", lambda: test_settings)
+
+    def no_sdk(_settings: Settings) -> NoReturn:
+        raise AssertionError("A test reached the real OpenAI SDK; install tests.llm.fakes.")
+
+    monkeypatch.setattr(llm_client, "sdk_factory", no_sdk)
 
 
 @pytest.fixture(autouse=True)
