@@ -13,8 +13,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
 # The worker extra adds saxonche, pdfplumber, pypdf and factur-x.
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project --extra worker
+RUN uv sync --frozen --no-dev --no-install-project --extra worker
 
 FROM python:3.13-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \

@@ -13,8 +13,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
 # No worker extra: saxonche, pdfplumber, pypdf and factur-x stay out of the API image.
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project
 
 FROM python:3.13-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \

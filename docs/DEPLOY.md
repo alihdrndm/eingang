@@ -85,11 +85,11 @@ Create the services in this order: `temporal`, `worker`, `api`. The API's pre-de
 3. **Settings → Deploy → Custom Start Command**:
 
    ```
-   server start-dev --ip :: --port 7233 --headless --db-filename /data/temporal.db --namespace eingang
+   temporal server start-dev --ip :: --port 7233 --headless --db-filename /data/temporal.db --namespace eingang
    ```
 
-   The image's entry point is `temporal`, so the command starts with `server`. If the deploy log says the command cannot be found, enter it with `temporal ` in front.
-4. **Settings → Deploy → Restart Policy**: On Failure. **Region**: `europe-west4`.
+   Railway's start command replaces the image's entry point (`temporal`), so the command names it. Without it the deploy fails with "The executable `server` could not be found".
+4. **Settings → Deploy → Restart Policy**: On Failure. **Region**: `europe-west4` (shown as "EU West (Amsterdam)"; Railway offers the region selector only after a service's first deployment, so deploy once, then change it. An empty volume moves with it).
 5. Add a volume: right-click the service (or the command palette) → **Attach volume**, mount path `/data`.
 6. **Variables**: add `RAILWAY_RUN_UID` = `0`. The image runs as a non-root user and Railway volumes belong to root; without this the server cannot write `/data/temporal.db` (the same reason `compose.yaml` runs it as root; see `docs/DECISIONS.md`).
 7. Do **not** generate a public domain.
