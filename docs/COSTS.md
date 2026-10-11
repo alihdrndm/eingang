@@ -35,6 +35,8 @@ The scheduled work (one maintenance run per day, a few sandbox seeds per day) wa
 
 **Stop rule (HANDOFF "Deployment"):** this estimate is above $4.50 per month on its own, before any other service the owner already runs on Railway. The default is to keep the three services **paused** except while the owner is using the deployed app (`docs/DEPLOY.md`, "Pausing services"). Other options: share one Temporal server with another project, or deploy only for demos.
 
+**Measured on Railway:** the first deploy (all three services in EU West, 11 Oct 2026) used **$0.05** of the billing cycle's $5.00 included usage when the deploy checks were finished. The workspace has a hard compute limit of $10 and an email alert at $5.
+
 ## Supabase
 
 Free plan, from https://supabase.com/pricing (10 Oct 2026): 500 MB database per project, 1 GB file storage, 5 GB egress, projects paused after 1 week of inactivity, at most 2 active free projects.
@@ -43,7 +45,7 @@ Measured: 9.4 MB of database and 972 KB of files per sandbox. Sandboxes are dele
 
 ## Vercel
 
-The frontend is a static build behind Vercel's rewrites; it runs on Vercel's free (Hobby) tier. No usage has been measured yet.
+The frontend is a static build behind Vercel's rewrites; it runs on Vercel's free (Hobby) tier, deployed on 11 Oct 2026 at no cost.
 
 ## OpenAI
 

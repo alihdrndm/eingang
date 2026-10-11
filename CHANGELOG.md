@@ -70,7 +70,7 @@ The first version: an inbox for supplier invoices that validates e-invoices, tur
 - Root scripts `dev`, `verify`, `test:e2e`, `gen:api`, `db:reset` and `seed`; Ruff, mypy strict, import-linter contracts, per-package coverage thresholds; ESLint, Prettier, vue-tsc and a raw-colour check.
 - CI with backend, frontend and end-to-end jobs.
 - Dockerfiles for the API and the worker, a frontend image for the end-to-end stack, the `e2e` Compose profile and a Playwright smoke test from the sandbox to the export.
-- Vercel configuration (`frontend/vercel.json`) and the deployment guide `docs/DEPLOY.md`.
+- Vercel configuration (`frontend/vercel.json`) and the deployment guide `docs/DEPLOY.md`, tested by the first deploy (Railway, Supabase and Vercel) with the measured proxy hop count.
 - `CONTRIBUTING.md`, `SECURITY.md`, `NOTICE` and the documentation in `docs/`.
 
 ### Removed
