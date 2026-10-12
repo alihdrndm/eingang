@@ -10,9 +10,9 @@
   <img src="docs/media/hero.gif" alt="Animated overview of Eingang: incoming invoices are stamped and sorted into the inbox, a changed bank account is checked and resolved, the invoice is approved on a phone and exported for the tax advisor" width="100%">
 </p>
 
-**Watch the 80-second demo:** open the sandbox, upload an invoice, see where a value came from, read a validation error in plain English, check a new bank account, then approve and export.
+**Watch the 70-second demo:** open the sandbox, upload an invoice, see where a value came from, read a validation error in plain English, check a new bank account, then approve and export.
 
-https://github.com/user-attachments/assets/51fc8719-6df4-4803-9369-a50e4da02f3a
+https://github.com/user-attachments/assets/91caa19c-48a0-4c4d-b29a-d2f2c9f47cc4
 
 <table>
   <tr>
