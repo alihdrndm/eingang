@@ -257,7 +257,9 @@ The Vercel rewrite reaches the API from a different Vercel address on every requ
 
    Run it again with `-H "X-Forwarded-For: 198.51.100.{}" -H "X-Eingang-Client-IP: 198.51.100.{}"` after `curl`: still some `429`, because the middleware replaces the address and the API ignores a fake `X-Forwarded-For`.
 
-**You should see:** `429`s in both runs. All `200` means the secret differs between Vercel and `api`, or the Vercel deployment predates the variable.
+**You should see:** `429`s in both runs. All `200` means the secret differs between Vercel and `api`, or the Vercel deployment predates the variable (a redeploy takes about a minute to go live after it shows Ready).
+
+   Measured (12 Oct 2026): 120 × `200` and 30 × `429` in both runs.
 
 ## Pausing the demo
 
