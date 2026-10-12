@@ -1,5 +1,5 @@
-import { VueQueryPlugin } from "@tanstack/vue-query";
-import { flushPromises, mount } from "@vue/test-utils";
+import { type QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia, type Pinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, type Router } from "vue-router";
@@ -19,6 +19,7 @@ import {
 
 let pinia: Pinia;
 let router: Router;
+let mounted: { wrapper: VueWrapper; queryClient: QueryClient } | null = null;
 
 beforeEach(() => {
   pinia = createPinia();
@@ -29,21 +30,24 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Tear the app down so its queries (a retry waits a second) cannot fetch during the next test
+  // and take the responses that test queued for itself.
+  mounted?.wrapper.unmount();
+  mounted?.queryClient.clear();
+  mounted = null;
   vi.unstubAllGlobals();
 });
 
 async function visit(path: string) {
   await router.push(path);
   await router.isReady();
+  const queryClient = createQueryClient();
   const wrapper = mount(App, {
     global: {
-      plugins: [
-        pinia,
-        router,
-        [VueQueryPlugin, { queryClient: createQueryClient() }],
-      ],
+      plugins: [pinia, router, [VueQueryPlugin, { queryClient }]],
     },
   });
+  mounted = { wrapper, queryClient };
   await flushPromises();
   return wrapper;
 }
