@@ -112,7 +112,7 @@ PaneHeader, IconButton, Checkbox and SearchField as standalone components (each 
 - **PDF pages** are buttons in the viewer's tool row rather than thumbnails (the design's review has single-page samples and no thumbnail strip).
 
 - **Fields of an XML invoice are editable** in `needs_review` for admins and accountants. The design makes them read-only ("Read-only: the XML is the invoice."); HANDOFF allows editing any invoice in review, and behaviour follows HANDOFF. The note then reads "From the XML. The XML is the invoice."; the read-only sentence is shown when editing is not allowed.
-- **Visualisation note from KoSIT.** The rendered XML comes from KoSIT's own stylesheet and is shown in a sandbox without scripts, so its built-in line "The display of content on this page is limited without JavaScript." appears at the top. It is KoSIT's page, not ours; the XML tab shows the source.
+- **Visualisation note from KoSIT.** The rendered XML comes from KoSIT's own stylesheet and is shown in a sandbox without scripts. Its scripts, tab bar and `<noscript>` line ("The display of content on this page is limited without JavaScript.") are removed and every section is shown at once. It is KoSIT's page, not ours; the XML tab shows the source.
 
 ### Homepage differences
 
