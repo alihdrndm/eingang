@@ -1,0 +1,13 @@
+# Security updates for all dependencies are switched on in the repository settings.
+# Version updates only for the CI actions, which are pinned to commit SHAs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

@@ -41,10 +41,18 @@ Backend tasks run from `backend/` with `uv run poe <task>`: `lint`, `format`, `t
 - **Errors** are `application/problem+json` with a `code` documented in `docs/ERRORS.md`. A new code needs an entry there.
 - **Dependencies:** add one only when it is needed, and commit the updated `backend/uv.lock` or `pnpm-lock.yaml`.
 
+## Pull requests
+
+1. Fork the repository and create a branch from `main`.
+2. Make the change with tests, run `pnpm verify`, and push to your fork.
+3. Open a pull request against `main` and fill in the template.
+
+`main` is protected: every pull request needs the CI checks (`backend`, `frontend`, `e2e`) to pass, an approving review from the maintainer (`.github/CODEOWNERS`), and all review threads resolved. Pull requests are squash-merged, so the title becomes the commit message: write it as a Conventional Commit. CI for a first-time or outside contributor starts after the maintainer approves the run. CI never has access to secrets, so do not add steps that need one.
+
 ## Regenerating generated files
 
 - **API types:** after changing an endpoint or serializer, run `pnpm gen:api` and commit `backend/openapi.json` and `frontend/src/api/schema.d.ts` together. CI fails if either is stale.
-- **Sandbox samples:** the twelve samples in `samples/` are generated from `backend/tools/sample_data.py`. Run `cd backend && uv run poe build-samples` and commit `samples/`. The S08 extraction and S10 comparison in `samples/precomputed/` come from `uv run poe precompute-samples`, which makes live LLM calls and costs money; run it only when those results must change.
+- **Sandbox samples:** the twelve samples in `samples/` are generated from `backend/tools/sample_data.py`. Run `cd backend && uv run poe build-samples` and commit `samples/`. It rewrites `samples/precomputed/S08.json` and `S10.json` without the precomputed LLM answers, so restore those two keys (`git checkout -p samples/precomputed/`) unless they must change. The S08 extraction and S10 comparison in `samples/precomputed/` come from `uv run poe precompute-samples`, which makes live LLM calls and costs money; run it only when those results must change.
 - **Vendored rules:** `uv run poe fetch-rules` downloads the pinned KoSIT releases and checks their SHA-256 sums. Update `NOTICE` when a vendored artefact changes.
 
 ## Where decisions are recorded
