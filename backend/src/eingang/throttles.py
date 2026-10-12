@@ -12,6 +12,7 @@ only when the secret matches, so a direct request cannot choose its key with it 
 
 import hmac
 import ipaddress
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from django.conf import settings
@@ -23,11 +24,16 @@ if TYPE_CHECKING:
 from rest_framework.throttling import SimpleRateThrottle
 
 
+def from_proxy(meta: Mapping[str, str]) -> bool:
+    """Whether the request carries PROXY_SHARED_SECRET, i.e. came through the Vercel site."""
+    secret: str = settings.PROXY_SHARED_SECRET
+    sent = meta.get("HTTP_X_EINGANG_PROXY_SECRET", "")
+    return bool(secret) and hmac.compare_digest(sent.encode(), secret.encode())
+
+
 def forwarded_client_ip(request: Request) -> str | None:
     """The visitor's address sent by the Vercel middleware, or None if it is not trusted."""
-    secret: str = settings.PROXY_SHARED_SECRET
-    sent = request.META.get("HTTP_X_EINGANG_PROXY_SECRET", "")
-    if not secret or not hmac.compare_digest(sent.encode(), secret.encode()):
+    if not from_proxy(request.META):
         return None
     try:
         return str(ipaddress.ip_address(request.META.get("HTTP_X_EINGANG_CLIENT_IP", "").strip()))

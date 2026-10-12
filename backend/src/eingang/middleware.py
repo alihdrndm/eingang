@@ -5,11 +5,13 @@ import re
 import time
 from collections.abc import Callable
 
+from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from uuid_utils.compat import uuid7
 
 from eingang import problem
 from eingang.log import request_id_var
+from eingang.throttles import from_proxy
 
 logger = logging.getLogger("eingang.request")
 
@@ -68,3 +70,28 @@ def _is_problem(response: HttpResponse) -> bool:
 
 def _is_html(response: HttpResponse) -> bool:
     return response.get("Content-Type", "").startswith("text/html")
+
+
+class ProxyOnlyMiddleware:
+    """With PROXY_SECRET_REQUIRED, /api answers only requests from the Vercel middleware.
+
+    Otherwise anyone could deploy a copy of the frontend whose rewrite points at this API;
+    its requests would arrive from changing Vercel addresses, past the per-IP limits.
+    """
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        if (
+            settings.PROXY_SECRET_REQUIRED
+            and request.path.startswith("/api/")
+            and not from_proxy(request.META)
+        ):
+            return problem.problem_response(
+                403,
+                "PROXY_REQUIRED",
+                "Use the web app",
+                "This API only answers requests made through its own web app.",
+            )
+        return self.get_response(request)

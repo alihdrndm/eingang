@@ -41,6 +41,9 @@ Each code has its own section, so `type` links straight to it.
 ### RATE_LIMITED
 `429`. Too many requests from this client. The `Retry-After` header says how many seconds to wait.
 
+### PROXY_REQUIRED
+`403`. The API is set to answer `/api` only through its own web app (`PROXY_SECRET_REQUIRED`), and the request did not come through it. Open the web app instead of calling the API host directly.
+
 ### INTERNAL
 `500`. An unexpected error on the server. The response never contains internal details; the request id in `instance` lets the operator find the log line.
 

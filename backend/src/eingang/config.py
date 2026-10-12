@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Shared with the frontend's Vercel middleware, which forwards the visitor's address with
     # it; empty means no forwarded address is trusted.
     PROXY_SHARED_SECRET: str = ""
+    # Answer /api only for requests that carry PROXY_SHARED_SECRET, so a copy of the frontend
+    # deployed elsewhere cannot use this API. Health checks and /docs stay open.
+    PROXY_SECRET_REQUIRED: bool = False
 
     TEMPORAL_ADDRESS: str = "localhost:7233"
     TEMPORAL_NAMESPACE: str = "eingang"

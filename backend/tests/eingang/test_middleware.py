@@ -3,7 +3,7 @@ import uuid
 
 import pytest
 from django.http import HttpRequest, HttpResponse
-from django.test import Client, RequestFactory
+from django.test import Client, RequestFactory, override_settings
 from django.urls import path
 
 from eingang.middleware import DEFAULT_HTML_CSP, RequestContextMiddleware
@@ -104,3 +104,33 @@ def test_docs_page_sends_its_own_csp_without_inline_script(client: Client) -> No
     assert policy.startswith("default-src 'none'")
     assert "unsafe-inline" not in policy.split("script-src", 1)[1].split(";", 1)[0]
     assert "swagger-ui-dist@5.33.1" in response.content.decode()
+
+
+PROXY_SECRET = "s3cret"  # noqa: S105 - test value
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("required", "headers", "status"),
+    [
+        (True, {}, 403),
+        (True, {"X-Eingang-Proxy-Secret": "guess"}, 403),
+        (True, {"X-Eingang-Proxy-Secret": PROXY_SECRET}, 200),
+        (False, {}, 200),
+    ],
+    ids=["required-no-secret", "required-wrong-secret", "required-secret", "not-required"],
+)
+def test_PROXY_REQUIRED_api_answers_only_through_the_web_app_when_required(
+    client: Client, required: bool, headers: dict[str, str], status: int
+) -> None:
+    with override_settings(PROXY_SECRET_REQUIRED=required, PROXY_SHARED_SECRET=PROXY_SECRET):
+        response = client.get("/api/v1/accuracy", headers=headers)
+    assert response.status_code == status
+    if status == 403:
+        assert response["Content-Type"] == PROBLEM_CONTENT_TYPE
+        assert response.json()["code"] == "PROXY_REQUIRED"
+
+
+def test_health_checks_stay_open_when_the_proxy_is_required(client: Client) -> None:
+    with override_settings(PROXY_SECRET_REQUIRED=True, PROXY_SHARED_SECRET=PROXY_SECRET):
+        assert client.get("/healthz").status_code == 200

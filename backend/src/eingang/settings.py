@@ -36,6 +36,7 @@ AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "eingang.middleware.RequestContextMiddleware",
+    "eingang.middleware.ProxyOnlyMiddleware",
     "invoices.middleware.UploadLimitMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -159,6 +160,7 @@ REST_FRAMEWORK = {
 
 # The frontend's Vercel middleware sends the visitor's address with this secret (rate limits).
 PROXY_SHARED_SECRET = config.PROXY_SHARED_SECRET
+PROXY_SECRET_REQUIRED = config.PROXY_SECRET_REQUIRED
 
 SWAGGER_UI_VERSION = "5.33.1"
 SPECTACULAR_SETTINGS = {

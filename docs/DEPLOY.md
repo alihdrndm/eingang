@@ -164,6 +164,7 @@ Set these on the services named in the "Service" column. `api` and `worker` load
 | `S3_BUCKET` | api, worker | No | `documents` | The private bucket. |
 | `TRUSTED_PROXY_HOPS` | api | Yes, after measuring | `0` | Number of proxy hops whose `X-Forwarded-For` entries the rate limits trust. Measure it as described in [TRUSTED_PROXY_HOPS](#trusted_proxy_hops). |
 | `PROXY_SHARED_SECRET` | api (and Vercel) | Yes | empty | A long random string, the same on `api` and in Vercel. The Vercel middleware sends it with the visitor's address so the rate limits can key on the visitor; see [Rate limits through Vercel](#rate-limits-through-vercel). Empty: the forwarded address is ignored. |
+| `PROXY_SECRET_REQUIRED` | api | Yes on the public demo | `false` | `true`: `/api` answers only requests that carry `PROXY_SHARED_SECRET` (`403 PROXY_REQUIRED` otherwise), so a copy of the frontend deployed elsewhere cannot use this API. `/healthz`, `/readyz` and `/docs` stay open. Set it to `false` while measuring `TRUSTED_PROXY_HOPS`. |
 | `TEMPORAL_ADDRESS` | api, worker | Yes | `localhost:7233` | `temporal.railway.internal:7233` |
 | `TEMPORAL_NAMESPACE` | api, worker | No | `eingang` | `eingang` |
 | `MAX_UPLOAD_BYTES` | api, worker | No | `4194304` | Largest accepted file, in bytes. Vercel limits a proxied request body (`docs/ASSUMPTIONS.md`, E2), so do not raise it. |
@@ -256,6 +257,8 @@ The Vercel rewrite reaches the API from a different Vercel address on every requ
    ```
 
    Run it again with `-H "X-Forwarded-For: 198.51.100.{}" -H "X-Eingang-Client-IP: 198.51.100.{}"` after `curl`: still some `429`, because the middleware replaces the address and the API ignores a fake `X-Forwarded-For`.
+
+5. On `api`, set `PROXY_SECRET_REQUIRED=true`. Then `curl -s https://<RAILWAY_API_HOST>/api/v1/accuracy` answers `403` with `"code":"PROXY_REQUIRED"`, while `https://<project>.vercel.app/api/v1/accuracy` still answers `200`. Without this, anyone can deploy the frontend with a rewrite to your API host, and their requests reach the API from changing Vercel addresses, past the per-IP limits.
 
 **You should see:** `429`s in both runs. All `200` means the secret differs between Vercel and `api`, or the Vercel deployment predates the variable (a redeploy takes about a minute to go live after it shows Ready).
 

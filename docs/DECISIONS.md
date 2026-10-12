@@ -223,6 +223,11 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 - **Cost:** one middleware invocation per `/api` request, inside the Vercel Hobby allowance at demo traffic.
 - **Checked on the live demo (12 Oct 2026):** 150 parallel requests through Vercel gave 120 × `200` and 30 × `429`; the same burst with a different fake `X-Forwarded-For`, `X-Eingang-Client-IP` and a guessed secret on every request gave 120 × `200` and 30 × `429` as well. Straight to the Railway domain with the secret, 150 different forwarded addresses were all `200` and one forwarded address was limited after 119.
 
+### Only the own web app may call /api: `PROXY_SECRET_REQUIRED`
+- **Why:** `frontend/vercel.json` names the demo's API host, so anyone could deploy the frontend unchanged and send traffic to that API from changing Vercel addresses, past the per-IP limits, on the owner's Railway bill.
+- **Did:** with `PROXY_SECRET_REQUIRED=true`, a middleware answers `/api/*` with `403 PROXY_REQUIRED` unless the request carries `PROXY_SHARED_SECRET`, which only the own Vercel middleware sends. `/healthz`, `/readyz` and `/docs` stay open for Railway's health check and readers. Default `false`, so local development and self-hosting need nothing.
+- **Trade-off:** the API can no longer be called directly on the Railway host; measuring `TRUSTED_PROXY_HOPS` again needs the switch off for the duration.
+
 ### Login is CSRF-protected too
 - **Did:** `POST /auth/login` checks the CSRF token like every other unsafe request, although the visitor has no session yet. This prevents login CSRF. The SPA fetches the token from `GET /auth/csrf` first, as the spec describes. CSRF failures answer `403 CSRF_FAILED`.
 
