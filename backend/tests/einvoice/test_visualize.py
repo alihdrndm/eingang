@@ -18,6 +18,7 @@ def test_xml_invoices_render_as_static_english_html(xml: bytes) -> None:
     assert page.startswith("<!DOCTYPE html>")
     assert '<html lang="en"' in page
     assert "<script" not in page.lower()
+    assert "<noscript" not in page.lower()  # no "limited without JavaScript" warning
     assert 'class="divHide"' not in page  # every section is visible without scripts
     assert 'class="menue"' not in page
     assert " onclick=" not in page.lower()

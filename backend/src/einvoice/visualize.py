@@ -31,13 +31,14 @@ def _static_page(page: str) -> str:
     """Remove every script and event handler, and show all sections at once.
 
     The KoSIT page switches between its sections (overview, details, ...) with a script.
-    Scripts never run here, so the tab bar is removed and every section is shown.
+    Scripts never run here, so the tab bar is removed and every section is shown. The
+    <noscript> warning goes too: with every section shown, nothing is limited.
     """
     document = lxml_html.document_fromstring(page)
     removed = [
         element
         for element in document.iter()
-        if element.tag == "script" or element.get("class") == "menue"
+        if element.tag in ("script", "noscript") or element.get("class") == "menue"
     ]
     for element in removed:
         parent = element.getparent()
