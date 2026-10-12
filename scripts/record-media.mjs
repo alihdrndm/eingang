@@ -239,12 +239,15 @@ async function glide(page, x, y, ms) {
   const from = { ...mouseAt };
   const distance = Math.hypot(x - from.x, y - from.y);
   const duration = ms ?? Math.min(900, Math.max(350, distance * 0.9));
-  const steps = Math.max(8, Math.round(duration / 16));
-  for (let step = 1; step <= steps; step++) {
-    const t = step / steps;
+  // Each step goes where the pointer should be by now, so a slow step shortens the
+  // path's resolution, not the glide: it lasts `duration` on any machine.
+  const started = Date.now();
+  for (;;) {
+    const t = Math.min(1, (Date.now() - started) / duration);
     const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
     await page.mouse.move(from.x + (x - from.x) * eased, from.y + (y - from.y) * eased);
-    await page.waitForTimeout(16);
+    if (t === 1) break;
+    await page.waitForTimeout(10);
   }
   mouseAt = { x, y };
 }
@@ -297,7 +300,12 @@ const SHOTS = [
       await page.waitForTimeout(400);
       await page.setInputFiles('input[type="file"]', NEW_INVOICE);
       const dialog = page.getByRole("dialog", { name: "Upload invoices" });
+      await dialog.getByText("Processing").waitFor();
+      await page.waitForTimeout(1500);
+      // The worker takes several seconds; the middle of the wait is left out.
+      await skip();
       await dialog.getByText(/Needs review|Awaiting approval/).waitFor({ timeout: 30000 });
+      await beat("A new invoice: detected, validated, checked", { settle: false });
       await page.waitForTimeout(1600);
       await press(page, dialog.getByRole("button", { name: "Close", exact: true }).last());
       await page.getByRole("row").filter({ hasText: "RE-2026-0431" }).waitFor();
@@ -430,9 +438,10 @@ async function demo(browser, design) {
   const app = await context.newPage();
   const recordingStart = Date.now(); // the page's video starts with the page, not with the first shot
   // A black screen with a known end on this clock; finding its end in the video gives the
-  // offset between the two clocks. The video only starts with the first painted page.
+  // offset between the two clocks. The video starts with the first painted page, and up to
+  // a few seconds later on a cold browser, so the white lead-in is long.
   await app.setContent('<body style="margin:0;background:#fffdf9"></body>');
-  await app.waitForTimeout(1200);
+  await app.waitForTimeout(3500);
   await app.setContent('<body style="margin:0;background:#000"></body>');
   await app.waitForTimeout(1500);
   const markerEnd = (Date.now() - recordingStart) / 1000;
@@ -516,6 +525,7 @@ async function demo(browser, design) {
     part.length = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", part.file]).toString());
   }
 
+  if (process.env.DEMO_DEBUG) for (const part of parts) console.log(part.card ? "card" : part.caption, part.join, part.length.toFixed(2));
   const inputs = parts.flatMap((part) => ["-i", part.file]);
   const filters = parts.map((_, index) => `[${index}:v]settb=AVTB,fps=30,format=yuv420p[s${index}]`);
   let previous = "s0";
