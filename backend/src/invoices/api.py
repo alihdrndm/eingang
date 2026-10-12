@@ -59,7 +59,8 @@ def temporal_unavailable() -> ProblemError:
         503,
         "TEMPORAL_UNAVAILABLE",
         "Processing delayed",
-        "The upload was stored. Processing will start automatically in a few minutes.",
+        "The upload was stored, but processing could not start now. It starts automatically"
+        " with the daily maintenance run at 03:10 UTC.",
     )
 
 

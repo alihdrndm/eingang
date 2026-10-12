@@ -111,4 +111,4 @@ Each code has its own section, so `type` links straight to it.
 `404`. The document has no such representation (visualisation, XML or extracted text), or, for `GET /accuracy`, no evaluation results have been published yet.
 
 ### TEMPORAL_UNAVAILABLE
-`503`. The upload was stored, but processing could not be started because Temporal is unreachable. It starts automatically when Temporal is back. From `retry`: processing could not be restarted; the document stays `failed`, so try again later.
+`503`. The upload was stored, but processing could not be started because Temporal is unreachable. It starts automatically with the next daily maintenance run (03:10 UTC) once Temporal is back. From `retry`: processing could not be restarted; the document stays `failed`, so try again later.

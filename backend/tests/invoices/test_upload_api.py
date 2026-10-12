@@ -209,6 +209,8 @@ def test_TEMPORAL_UNAVAILABLE_keeps_the_upload(
     response = upload(signed_in("accountant"), ("a.xml", S01))
     assert response.status_code == 503
     assert response.json()["code"] == "TEMPORAL_UNAVAILABLE"
+    # The only recovery is the daily maintenance, so the message must not promise minutes.
+    assert "03:10 UTC" in response.json()["detail"]
     document = Document.objects.get()
     assert document.status == "received"
     assert document.workflow_id == f"invoice-{document.id}"
