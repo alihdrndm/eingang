@@ -2,7 +2,7 @@ from collections.abc import Callable
 from datetime import timedelta
 
 import pytest
-from django.test import Client
+from django.test import Client, override_settings
 
 from accounts.models import Organization
 from eingang import clock
@@ -149,3 +149,70 @@ def test_client_supplied_forwarded_for_does_not_change_the_throttle_key(api: Api
             headers={"X-CSRFToken": token, "X-Forwarded-For": f"203.0.113.{number}"},
         )
     assert response.status_code == 429
+
+
+PROXY_SECRET = "s3cret"  # noqa: S105 - test value
+
+
+def _login_burst(api: ApiClient, headers: Callable[[int], dict[str, str]]) -> int:
+    """Eleven failed logins, one over the limit; the status of the last one."""
+    token = api.csrf()
+    for number in range(11):
+        response = api.post(
+            "/api/v1/auth/login",
+            data={"email": "nobody@example.invalid", "password": "x"},
+            content_type="application/json",
+            headers={"X-CSRFToken": token, **headers(number)},
+        )
+    return response.status_code
+
+
+def test_the_vercel_middleware_address_is_the_throttle_key_with_the_secret(api: ApiClient) -> None:
+    with override_settings(PROXY_SHARED_SECRET=PROXY_SECRET):
+        status = _login_burst(
+            api,
+            lambda number: {
+                "X-Eingang-Proxy-Secret": PROXY_SECRET,
+                "X-Eingang-Client-IP": f"203.0.113.{number}",
+            },
+        )
+    assert status == 400  # wrong password, not limited: eleven visitors, one attempt each
+
+
+@pytest.mark.parametrize("secret_sent", ["wrong", ""], ids=["wrong-secret", "no-secret"])
+def test_a_forwarded_address_without_the_secret_does_not_change_the_throttle_key(
+    api: ApiClient, secret_sent: str
+) -> None:
+    with override_settings(PROXY_SHARED_SECRET=PROXY_SECRET):
+        status = _login_burst(
+            api,
+            lambda number: {
+                "X-Eingang-Proxy-Secret": secret_sent,
+                "X-Eingang-Client-IP": f"203.0.113.{number}",
+            },
+        )
+    assert status == 429
+
+
+def test_the_forwarded_address_is_ignored_when_no_secret_is_configured(api: ApiClient) -> None:
+    with override_settings(PROXY_SHARED_SECRET=""):
+        status = _login_burst(
+            api,
+            lambda number: {
+                "X-Eingang-Proxy-Secret": "",
+                "X-Eingang-Client-IP": f"203.0.113.{number}",
+            },
+        )
+    assert status == 429
+
+
+def test_one_forwarded_visitor_is_still_limited(api: ApiClient) -> None:
+    with override_settings(PROXY_SHARED_SECRET=PROXY_SECRET):
+        status = _login_burst(
+            api,
+            lambda _: {
+                "X-Eingang-Proxy-Secret": PROXY_SECRET,
+                "X-Eingang-Client-IP": "203.0.113.7",
+            },
+        )
+    assert status == 429

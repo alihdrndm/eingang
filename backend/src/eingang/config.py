@@ -41,6 +41,9 @@ class Settings(BaseSettings):
 
     # Proxy hops in front of the API whose X-Forwarded-For entries are trusted (rate limits).
     TRUSTED_PROXY_HOPS: int = Field(default=0, ge=0)
+    # Shared with the frontend's Vercel middleware, which forwards the visitor's address with
+    # it; empty means no forwarded address is trusted.
+    PROXY_SHARED_SECRET: str = ""
 
     TEMPORAL_ADDRESS: str = "localhost:7233"
     TEMPORAL_NAMESPACE: str = "eingang"

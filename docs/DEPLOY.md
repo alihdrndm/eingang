@@ -163,6 +163,7 @@ Set these on the services named in the "Service" column. `api` and `worker` load
 | `S3_SECRET_ACCESS_KEY` | api, worker | With `s3` | empty | From Supabase's S3 Access Keys. |
 | `S3_BUCKET` | api, worker | No | `documents` | The private bucket. |
 | `TRUSTED_PROXY_HOPS` | api | Yes, after measuring | `0` | Number of proxy hops whose `X-Forwarded-For` entries the rate limits trust. Measure it as described in [TRUSTED_PROXY_HOPS](#trusted_proxy_hops). |
+| `PROXY_SHARED_SECRET` | api (and Vercel) | Yes | empty | A long random string, the same on `api` and in Vercel. The Vercel middleware sends it with the visitor's address so the rate limits can key on the visitor; see [Rate limits through Vercel](#rate-limits-through-vercel). Empty: the forwarded address is ignored. |
 | `TEMPORAL_ADDRESS` | api, worker | Yes | `localhost:7233` | `temporal.railway.internal:7233` |
 | `TEMPORAL_NAMESPACE` | api, worker | No | `eingang` | `eingang` |
 | `MAX_UPLOAD_BYTES` | api, worker | No | `4194304` | Largest accepted file, in bytes. Vercel limits a proxied request body (`docs/ASSUMPTIONS.md`, E2), so do not raise it. |
@@ -195,7 +196,7 @@ Set these on the services named in the "Service" column. `api` and `worker` load
 2. In Vercel: **Add New → Project**, import `alihdrndm/eingang`.
 3. **Root Directory**: `frontend`. Leave **Include files outside the root directory in the Build Step** on: the pnpm workspace's lock file and `package.json` (with the pinned pnpm version) are at the repository root.
 4. **Framework Preset**: Vite. Build command and output directory come from `frontend/vercel.json` (`pnpm run build`, `dist`); leave the install command on its default. Vercel runs `pnpm install` in `frontend/`, and pnpm installs the whole workspace from the root lock file.
-5. **Environment Variables**: add `ENABLE_EXPERIMENTAL_COREPACK` = `1`. Vercel then uses the pnpm version pinned in the root `package.json` (`packageManager`) instead of picking one from the lock file.
+5. **Environment Variables**: add `ENABLE_EXPERIMENTAL_COREPACK` = `1`. Vercel then uses the pnpm version pinned in the root `package.json` (`packageManager`) instead of picking one from the lock file. Add `PROXY_SHARED_SECRET` as well ([Rate limits through Vercel](#rate-limits-through-vercel)).
 6. **Settings → Build and Deployment → Node.js Version**: 24.x (the version in `.nvmrc`).
 7. Deploy. Note the production domain, for example `https://eingang.vercel.app`.
 8. In Railway, set `FRONTEND_ORIGIN` on `api` and `worker` to that origin. Railway redeploys both services.
@@ -218,7 +219,7 @@ The response headers of the app's pages (not of `/api/...`, which come from the 
 
 Requests reach the API through Vercel and Railway's proxies, which add entries to `X-Forwarded-For`. The rate limits (per client IP) trust exactly `TRUSTED_PROXY_HOPS` entries from the right of that header. Too low, and every visitor shares one proxy address and one limit. Too high, and a visitor can choose their own key by sending the header. The right value can only be measured on the deployed stack.
 
-The value is measured on the Railway domain (`https://<RAILWAY_API_HOST>`). Requests through Vercel cannot be limited per client with any value (see **Known gap** below), so measuring there gives all `200` at every value.
+The value is measured on the Railway domain (`https://<RAILWAY_API_HOST>`). Requests through Vercel cannot be limited per client with any value, so measuring there gives all `200` at every value; [Rate limits through Vercel](#rate-limits-through-vercel) covers that path.
 
 Use the public endpoint `GET /api/v1/accuracy`, which has the general limit of 120 requests per minute per client IP:
 
@@ -238,7 +239,25 @@ Use the public endpoint `GET /api/v1/accuracy`, which has the general limit of 1
 
    Measured value: **2** (11 Oct 2026). Railway's edge appends an internal proxy address to `X-Forwarded-For`, so a request sent straight to the Railway domain arrives as `client, railway-proxy`. With 2 the key is the client, and a fake header lands further left and is ignored (150 spoofed requests: 120 × `200`, 30 × `429`). With 1 the key is the proxy address, which changes per request, so nothing is limited. The shared-key test from a second network was not run.
 
-   **Known gap:** requests through Vercel were not limited at any value from 1 to 4 (150 requests, all `200`): on that path the counted entry changes per request. This is the path every browser uses, so on the live demo the per-IP limits do not hold: sign-in (10 per minute) has no per-IP limit against password guessing, and one client can use up the global sandbox cap (`SANDBOX_DAILY_LIMIT`, 50 per day), which blocks the sandbox for everyone until the next day. Limiting traffic through Vercel needs a code change (`docs/DECISIONS.md`, "Proxy hops for rate limits"). Until then the global sandbox cap and `LLM_ENABLED=false` bound what a visitor can cost, and the demo has no accounts other than sandboxes.
+   Requests through Vercel were not limited at any value from 1 to 4 (150 requests, all `200`): on that path the counted entry changes per request. They are limited by the next section instead.
+
+## Rate limits through Vercel
+
+The Vercel rewrite reaches the API from a different Vercel address on every request, so no `TRUSTED_PROXY_HOPS` value finds the visitor on that path, and it is the path every browser uses. A Vercel middleware (`frontend/middleware.ts`, run for `/api/*` before the rewrite) therefore sends the visitor's address in `X-Eingang-Client-IP` together with `PROXY_SHARED_SECRET`. The API uses that address for the per-IP limits only when the secret matches; otherwise it falls back to `TRUSTED_PROXY_HOPS`. The middleware drops both headers if a visitor sends them.
+
+1. Generate the secret: `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+2. Railway: put it into **Settings → Shared Variables** as `PROXY_SHARED_SECRET`, and add `PROXY_SHARED_SECRET="${{shared.PROXY_SHARED_SECRET}}"` to `api`. Railway redeploys `api`.
+3. Vercel: project → **Settings → Environment Variables**, add `PROXY_SHARED_SECRET` with the same value for **Production**. Then **Deployments** → the latest production deployment → **Redeploy**, because a new variable only reaches new deployments.
+4. Check, after both deploys are Active: send 150 requests through Vercel and some answers must be `429`:
+
+   ```sh
+   seq 1 150 | xargs -P 16 -I{} curl -s -o /dev/null -w "%{http_code}
+"      https://<project>.vercel.app/api/v1/accuracy | sort | uniq -c
+   ```
+
+   Run it again with `-H "X-Forwarded-For: 198.51.100.{}" -H "X-Eingang-Client-IP: 198.51.100.{}"` after `curl`: still some `429`, because the middleware replaces the address and the API ignores a fake `X-Forwarded-For`.
+
+**You should see:** `429`s in both runs. All `200` means the secret differs between Vercel and `api`, or the Vercel deployment predates the variable.
 
 ## Pausing the demo
 

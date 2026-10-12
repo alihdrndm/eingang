@@ -157,6 +157,9 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 25,
 }
 
+# The frontend's Vercel middleware sends the visitor's address with this secret (rate limits).
+PROXY_SHARED_SECRET = config.PROXY_SHARED_SECRET
+
 SWAGGER_UI_VERSION = "5.33.1"
 SPECTACULAR_SETTINGS = {
     "TITLE": "Eingang API",
