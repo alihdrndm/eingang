@@ -327,6 +327,12 @@ def test_format_label_credit_note_by_type_code_381() -> None:
     assert format_label(detection, 380) == "XRechnung · CII"
 
 
+@pytest.mark.parametrize("code", [261, 262, 396, 532])
+def test_format_label_credit_note_by_any_credit_note_type_code(code: int) -> None:
+    detection = Detection(kind=Kind.XML, profile=Profile.EN16931, syntax=Syntax.UBL)
+    assert format_label(detection, code) == "EN 16931 · UBL · credit note"
+
+
 def test_format_label_credit_note_by_ubl_root() -> None:
     detection = detect(xml.ubl(credit_note=True), "a.xml")
     assert format_label(detection, None) == "XRechnung · UBL · credit note"

@@ -77,3 +77,14 @@ def test_floats_are_never_needed_but_strings_parse_exactly() -> None:
 def test_credit_note_flag() -> None:
     assert minimal(type_code=381).is_credit_note
     assert not minimal(type_code=380).is_credit_note
+    assert not minimal().is_credit_note
+
+
+@pytest.mark.parametrize("code", [81, 83, 261, 262, 296, 308, 381, 396, 420, 458, 532])
+def test_credit_note_flag_for_every_en16931_credit_note_code(code: int) -> None:
+    assert minimal(type_code=code).is_credit_note
+
+
+@pytest.mark.parametrize("code", [326, 380, 384, 389, 751, 875, 876, 877])
+def test_invoice_codes_are_not_credit_notes(code: int) -> None:
+    assert not minimal(type_code=code).is_credit_note

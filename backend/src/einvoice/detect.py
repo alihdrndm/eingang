@@ -9,7 +9,7 @@ from lxml import etree
 from einvoice import namespaces as ns
 from einvoice import pdf
 from einvoice.errors import UnsafeXmlError, UnsupportedFileError
-from einvoice.model import CREDIT_NOTE_TYPE_CODE
+from einvoice.model import is_credit_note_type
 from einvoice.xmlsafe import parse_xml, strip_leading
 
 # D3: a PDF needs this many non-whitespace characters in its first pages to count as text.
@@ -184,6 +184,6 @@ def format_label(detection: Detection, type_code: int | None) -> str:
         label = f"ZUGFeRD · {shown}"
     else:
         label = _FIXED_LABELS[detection.kind]
-    if type_code == CREDIT_NOTE_TYPE_CODE or detection.ubl_credit_note:
+    if is_credit_note_type(type_code) or detection.ubl_credit_note:
         label += " · credit note"
     return label

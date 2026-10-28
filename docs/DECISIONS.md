@@ -428,3 +428,6 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 
 ### UBL dates with a time zone
 - **A UBL date's time zone is dropped and the day kept as written.** `xsd:date` allows `2026-10-01Z` or `2026-10-01+02:00`; the invoice's day is what the supplier printed, so converting it to UTC would move it. Anything else after the day (a time, a malformed offset) is still a parse error. CII dates are format 102 (`YYYYMMDD`), which has no time zone, so the CII parser is unchanged.
+
+### Which type codes are credit notes
+- **A credit note is any BT-3 code in `einvoice.model.CREDIT_NOTE_TYPE_CODES`: 81, 83, 261, 262, 296, 308, 381, 396, 420, 458, 532.** These are the UNTDID 1001 credit-note codes of the EN 16931 code list, the set Peppol BIS Billing 3.0 allows in a UBL `CreditNote` (rule PEPPOL-EN16931-P0101). Before, only 381 counted. The one set decides the " · credit note" format label, negative amounts in the CSV exports, whether `einvoice.write` writes a UBL `CreditNote`, and the business checks. XRechnung 3 itself allows only 381 among them; other codes still pass through as they were sent. The frontend still marks only 381 as a credit note (`frontend/src/features/review/fields.ts`).

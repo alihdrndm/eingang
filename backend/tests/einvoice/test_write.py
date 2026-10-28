@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -111,6 +112,14 @@ def test_type_code_381_is_written_as_a_ubl_credit_note() -> None:
     assert parse_ubl(written) == credit_note
 
 
+@pytest.mark.parametrize("code", [261, 396])
+def test_other_credit_note_codes_are_written_as_a_ubl_credit_note(code: int) -> None:
+    credit_note = EXPECTED.model_copy(update={"type_code": code})
+    written = to_ubl(credit_note, OPTIONS)
+    assert parse_xml(written).tag == ns.UBL_CREDIT_NOTE_ROOT
+    assert parse_ubl(written) == credit_note
+
+
 def test_missing_type_code_is_written_as_commercial_invoice_380() -> None:
     invoice = EXPECTED.model_copy(update={"type_code": None})
     assert parse_ubl(to_ubl(invoice, WriteOptions())).type_code == 380
@@ -178,7 +187,7 @@ lines = st.builds(
 invoices = st.builds(
     CanonicalInvoice,
     invoice_number=texts,
-    type_code=st.sampled_from([380, 381, 384, 389, 326]),
+    type_code=st.sampled_from([380, 381, 384, 389, 326, 261, 396]),
     issue_date=dates,
     due_date=optional(dates),
     currency=st.sampled_from(["EUR", "USD", "CHF"]),
