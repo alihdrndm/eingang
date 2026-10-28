@@ -258,6 +258,19 @@ def test_C01_BR_CO_13_allowances_and_charges_count(organization: Organization) -
     assert only(run(off_by_two_cents), "C01").details == {"fields": ["net_total"]}
 
 
+def test_C01_BR_CO_13_ignores_a_printed_minus_sign_on_allowances(
+    organization: Organization,
+) -> None:
+    # AI extraction keeps a printed minus sign ("Rabatt -50,00"); BT-107 is still an amount.
+    invoice = invoice_on(
+        organization,
+        minutes=1,
+        line_total=Decimal("1050.00"),
+        allowance_total=Decimal("-50.00"),
+    )
+    assert "C01" not in ids(run(invoice))
+
+
 def test_C01_BR_CO_13_needs_line_total_and_net_total(organization: Organization) -> None:
     no_line_total = invoice_on(organization, minutes=1, allowance_total=Decimal("50.00"))
     assert "C01" not in ids(run(no_line_total))
@@ -311,10 +324,11 @@ def test_C01_BR_CO_17_row_tax_differs_from_taxable_times_rate(organization: Orga
     assert "7.00% of 1000.00 is 70.00" in finding.message
 
 
-def test_C01_BR_CO_17_rounds_to_the_cent_with_one_cent_tolerance(
+def test_C01_BR_CO_17_allows_one_currency_unit_like_the_schematron(
     organization: Organization,
 ) -> None:
-    # 19% of 33.33 is 6.3327, which rounds to 6.33.
+    # 19% of 33.33 is 6.3327, which rounds to 6.33; the official rule accepts anything less
+    # than one currency unit away, as suppliers that round per line drift by a few cents.
     def invoice_with_tax(minutes: int, tax: str) -> Invoice:
         return invoice_on(
             organization,
@@ -330,8 +344,9 @@ def test_C01_BR_CO_17_rounds_to_the_cent_with_one_cent_tolerance(
         )
 
     assert "C01" not in ids(run(invoice_with_tax(1, "6.33")))
-    assert "C01" not in ids(run(invoice_with_tax(2, "6.34")))
-    assert only(run(invoice_with_tax(3, "6.35")), "C01").details == {"fields": ["tax_breakdown"]}
+    assert "C01" not in ids(run(invoice_with_tax(2, "6.40")))
+    assert "C01" not in ids(run(invoice_with_tax(3, "7.32")))
+    assert only(run(invoice_with_tax(4, "7.33")), "C01").details == {"fields": ["tax_breakdown"]}
 
 
 def test_C01_BR_CO_17_names_each_wrong_row_once_in_fields(organization: Organization) -> None:

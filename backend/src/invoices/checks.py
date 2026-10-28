@@ -28,6 +28,9 @@ from suppliers.trust import first_invoice_id, is_trusted
 Severity = Check.Severity
 
 TOLERANCE = Decimal("0.01")
+# BR-CO-17 in the vendored EN 16931 Schematron accepts a row's tax within one currency unit
+# of taxable * rate / 100, because suppliers that round per line drift by a few cents.
+BREAKDOWN_ROW_TOLERANCE = Decimal(1)
 CENT = Decimal("0.01")
 SIMILARITY_THRESHOLD = 80
 
@@ -257,7 +260,8 @@ def _breakdown_sum(invoice: Invoice, key: str) -> Decimal | None:
 
 
 def _breakdown_row_problems(invoice: Invoice) -> list[str]:
-    """BR-CO-17: each row's tax is its taxable amount * rate / 100, rounded to the cent.
+    """BR-CO-17: each row's tax is its taxable amount * rate / 100, rounded to the cent,
+    within `BREAKDOWN_ROW_TOLERANCE` like the official rule.
 
     A row without a rate, taxable amount or tax amount is skipped.
     """
@@ -271,7 +275,7 @@ def _breakdown_row_problems(invoice: Invoice) -> list[str]:
         if rate is None or taxable is None or tax is None:
             continue
         expected = (taxable * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
-        if _differs(expected, tax):
+        if abs(abs(expected) - abs(tax)) >= BREAKDOWN_ROW_TOLERANCE:
             problems.append(
                 f"in the VAT breakdown, {rate.quantize(CENT)}% of {_money(taxable)} is "
                 f"{_money(expected)}, but the tax amount is {_money(tax)}"
@@ -298,9 +302,10 @@ def _c01_arithmetic(invoice: Invoice, context: CheckContext) -> list[Finding]:
 
     net, tax, gross = invoice.net_total, invoice.tax_total, invoice.gross_total
     if line_total is not None and net is not None:
-        # BR-CO-13. No document-level allowance or charge total means none (EN 16931).
-        allowances = invoice.allowance_total or Decimal(0)
-        charges = invoice.charge_total or Decimal(0)
+        # BR-CO-13. No document-level allowance or charge total means none (EN 16931). Both
+        # are amounts, but an AI-read "Rabatt -50,00" keeps its printed minus sign.
+        allowances = abs(invoice.allowance_total or Decimal(0))
+        charges = abs(invoice.charge_total or Decimal(0))
         expected_net = line_total - allowances + charges
         if _differs(expected_net, net):
             problems.append(
