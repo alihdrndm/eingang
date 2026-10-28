@@ -21,6 +21,8 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Vitest empties CSS imports; the contrast test reads the tokens as text.
+    css: { include: [/tokens\.css/] },
     // Playwright's end-to-end specs (e2e/) run in a real browser, not here.
     include: ["src/**/*.test.ts", "middleware.test.ts"],
   },

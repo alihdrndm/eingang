@@ -2,12 +2,18 @@ import { type QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia, type Pinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMemoryHistory, type Router } from "vue-router";
+import { defineComponent, h, nextTick, ref } from "vue";
+import {
+  createMemoryHistory,
+  createRouter,
+  type Router,
+  RouterView,
+} from "vue-router";
 
 import { api, resetCsrfToken } from "./api/client";
 import { createQueryClient } from "./api/query";
 import App from "./App.vue";
-import { createAppRouter } from "./router";
+import { createAppRouter, installPageChange } from "./router";
 import { SANDBOX_EXPIRED_MESSAGE } from "./stores/session";
 import {
   json,
@@ -43,6 +49,8 @@ async function visit(path: string) {
   await router.isReady();
   const queryClient = createQueryClient();
   const wrapper = mount(App, {
+    // In the document, so focus can move to the page heading.
+    attachTo: document.body,
     global: {
       plugins: [pinia, router, [VueQueryPlugin, { queryClient }]],
     },
@@ -190,5 +198,121 @@ describe("401 from any request", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.name).toBe("settings");
+  });
+});
+
+describe("page change", () => {
+  it("sets the document title and leaves focus alone on the first load", async () => {
+    mockFetch(() => json(200, sessionBody()));
+
+    await visit("/app/inbox");
+
+    expect(document.title).toBe("Inbox · Eingang");
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("names every route in the document title", () => {
+    const untitled = router
+      .getRoutes()
+      .filter((route) => route.name && !route.meta.title)
+      .map((route) => route.name);
+    expect(untitled).toEqual([]);
+  });
+
+  it("moves focus to the new page's heading and retitles the document", async () => {
+    mockFetch(() => json(200, sessionBody()));
+    const wrapper = await visit("/app/inbox");
+
+    await router.push("/app/settings");
+    await flushPromises();
+
+    const heading = wrapper.get("h1");
+    expect(heading.text()).toBe("Settings");
+    expect(heading.attributes("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(heading.element);
+    expect(document.title).toBe("Settings · Eingang");
+  });
+
+  it("keeps focus where it is when only the query changes", async () => {
+    mockFetch(() => json(200, sessionBody()));
+    const wrapper = await visit("/app/inbox");
+    const tab = wrapper.get<HTMLElement>('[role="tab"]').element;
+    tab.focus();
+
+    await router.push({ name: "inbox", query: { tab: "all" } });
+    await flushPromises();
+
+    expect(document.activeElement).toBe(tab);
+  });
+});
+
+describe("page change focus", () => {
+  // A page that shows a loading heading first and its real heading once loaded.
+  const loaded = ref(false);
+  const Page = defineComponent(
+    () => () => (loaded.value ? h("h1", "Loaded") : h("h1", "Loading")),
+  );
+  const Start = defineComponent(() => () => h("h1", "Start"));
+  let small: Router;
+
+  beforeEach(async () => {
+    loaded.value = false;
+    small = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/", component: Start },
+        { path: "/page", component: Page, meta: { title: "Page · Eingang" } },
+      ],
+    });
+    installPageChange(small);
+    await small.push("/");
+    await small.isReady();
+    const wrapper = mount(
+      defineComponent(() => () => h(RouterView)),
+      { attachTo: document.body, global: { plugins: [small] } },
+    );
+    mounted = { wrapper, queryClient: createQueryClient() };
+  });
+
+  it("follows the heading when the page replaces it", async () => {
+    await small.push("/page");
+    await flushPromises();
+    expect(document.activeElement?.textContent).toBe("Loading");
+    expect(document.title).toBe("Page · Eingang");
+
+    loaded.value = true;
+    await nextTick();
+
+    expect(document.activeElement?.textContent).toBe("Loaded");
+  });
+
+  it("follows more than one replaced heading", async () => {
+    const stage = ref(0);
+    const Steps = defineComponent(
+      () => () => h("h1", { key: stage.value }, `Step ${stage.value}`),
+    );
+    small.addRoute({ path: "/steps", component: Steps });
+    await small.push("/steps");
+    await flushPromises();
+    expect(document.activeElement?.textContent).toBe("Step 0");
+
+    for (const next of [1, 2]) {
+      stage.value = next;
+      await nextTick();
+      await flushPromises();
+      expect(document.activeElement?.textContent).toBe(`Step ${next}`);
+    }
+  });
+
+  it("leaves a text field that outlives the page alone (the top-bar search)", async () => {
+    const field = document.createElement("input");
+    document.body.append(field);
+    field.focus();
+
+    await small.push("/page");
+    await flushPromises();
+
+    expect(document.activeElement).toBe(field);
+    field.remove();
   });
 });
