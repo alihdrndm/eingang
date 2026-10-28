@@ -3,7 +3,7 @@
 // "EvidencePopover"): every canonical field by group; values read by the LLM carry their
 // confidence and the exact text they came from; XML values carry "From the XML". Editable
 // only when the API allows `edit_fields`; a saved edit marks the field "Edited".
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 
 import { api, ApiError, unwrap } from "../../api/client";
 import type { components } from "../../api/schema";
@@ -79,11 +79,50 @@ const editors = computed(() => {
 });
 
 // Evidence shows while the eye button is hovered or focused (HANDOFF), and stays open
-// after a click until it is clicked again.
+// after a click until it is clicked again. Hover content must be reachable and dismissible
+// (WCAG 1.4.13): it stays while the pointer is on the button or on the evidence (a short
+// delay covers the way between them), and Escape closes it wherever focus is.
+const PREVIEW_HIDE_MS = 300;
 const evidenceOpen = ref<string | null>(null);
 const previewing = ref<string | null>(null);
+let hideTimer: ReturnType<typeof setTimeout> | undefined;
 const shown = (name: string) =>
   evidenceOpen.value === name || previewing.value === name;
+
+function preview(name: string): void {
+  clearTimeout(hideTimer);
+  previewing.value = name;
+}
+
+function hidePreviewSoon(): void {
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => (previewing.value = null), PREVIEW_HIDE_MS);
+}
+
+/** Focus left the eye button or the evidence: hide unless it went to the other one. */
+function onPreviewFocusOut(name: string, event: FocusEvent): void {
+  const next = event.relatedTarget;
+  const evidence = document.getElementById(`evidence-${name}`);
+  const eye = document.getElementById(`evidence-button-${name}`);
+  if (next instanceof Node && (evidence?.contains(next) || eye === next))
+    return;
+  clearTimeout(hideTimer);
+  previewing.value = null;
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Escape") return;
+  if (previewing.value === null && evidenceOpen.value === null) return;
+  clearTimeout(hideTimer);
+  previewing.value = null;
+  evidenceOpen.value = null;
+}
+
+onMounted(() => window.addEventListener("keydown", onKeydown));
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKeydown);
+  clearTimeout(hideTimer);
+});
 const editing = ref<string | null>(null);
 const draft = ref("");
 const fieldError = ref<string | null>(null);
@@ -259,16 +298,17 @@ function evidenceParts(row: FieldRowState): [string, string, string] | null {
               <span class="field__actions">
                 <button
                   v-if="row.evidence"
+                  :id="`evidence-button-${row.def.name}`"
                   type="button"
                   class="icon-button"
                   :aria-label="`Show where ${row.def.label} came from`"
                   :title="`Show where ${row.def.label} came from`"
                   :aria-expanded="shown(row.def.name) ? 'true' : 'false'"
                   @click="toggleEvidence(row.def.name)"
-                  @mouseenter="previewing = row.def.name"
-                  @mouseleave="previewing = null"
-                  @focus="previewing = row.def.name"
-                  @blur="previewing = null"
+                  @mouseenter="preview(row.def.name)"
+                  @mouseleave="hidePreviewSoon"
+                  @focus="preview(row.def.name)"
+                  @blur="onPreviewFocusOut(row.def.name, $event)"
                 >
                   <Icon name="eye" :size="16" />
                 </button>
@@ -290,9 +330,14 @@ function evidenceParts(row: FieldRowState): [string, string, string] | null {
               </p>
               <div
                 v-if="shown(row.def.name) && evidenceParts(row)"
+                :id="`evidence-${row.def.name}`"
                 class="evidence"
                 role="group"
                 :aria-label="`Where ${row.def.label} came from`"
+                @mouseenter="preview(row.def.name)"
+                @mouseleave="hidePreviewSoon"
+                @focusin="preview(row.def.name)"
+                @focusout="onPreviewFocusOut(row.def.name, $event)"
               >
                 <p class="evidence__snippet mono">
                   {{ evidenceParts(row)?.[0]

@@ -1,5 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nextTick } from "vue";
 
 import { resetCsrfToken } from "../../api/client";
 import type { components } from "../../api/schema";
@@ -237,5 +238,81 @@ describe("FieldsPanel", () => {
     expect(wrapper.find("mark").text()).toBe("2026-1043");
     await eye.trigger("blur");
     expect(wrapper.find("mark").exists()).toBe(false);
+  });
+
+  describe("hover preview (WCAG 1.4.13)", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    const EYE = '[aria-label="Show where Invoice number came from"]';
+
+    it("stays open while the pointer moves from the eye onto the evidence", async () => {
+      const wrapper = mount(FieldsPanel, {
+        props: { document: LLM, canEdit: false },
+        attachTo: document.body,
+      });
+      await wrapper.find(EYE).trigger("mouseenter");
+      await wrapper.find(EYE).trigger("mouseleave");
+      await vi.advanceTimersByTimeAsync(100);
+      await wrapper.find(".evidence").trigger("mouseenter");
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // The button inside can be reached.
+      const showInDocument = wrapper
+        .findAll(".evidence button")
+        .find((button) => button.text() === "Show in document");
+      expect(showInDocument?.exists()).toBe(true);
+      await showInDocument?.trigger("click");
+      expect(wrapper.emitted("select-field")).toEqual([["invoice_number"]]);
+
+      await wrapper.find(".evidence").trigger("mouseleave");
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(wrapper.find(".evidence").exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("hides after a short delay when the pointer leaves the eye", async () => {
+      const wrapper = mount(FieldsPanel, {
+        props: { document: LLM, canEdit: false },
+      });
+      await wrapper.find(EYE).trigger("mouseenter");
+      await wrapper.find(EYE).trigger("mouseleave");
+      expect(wrapper.find(".evidence").exists()).toBe(true);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(wrapper.find(".evidence").exists()).toBe(false);
+    });
+
+    it("keeps the evidence while focus moves into it", async () => {
+      const wrapper = mount(FieldsPanel, {
+        props: { document: LLM, canEdit: false },
+        attachTo: document.body,
+      });
+      const eye = wrapper.find<HTMLButtonElement>(EYE);
+      eye.element.focus();
+      await nextTick();
+      wrapper.get<HTMLButtonElement>(".evidence button").element.focus();
+      await nextTick();
+      expect(wrapper.find(".evidence").exists()).toBe(true);
+      wrapper.unmount();
+    });
+
+    it.each([
+      ["hovered", "mouseenter"],
+      ["pinned", "click"],
+    ])("closes on Escape when %s", async (_, event) => {
+      const wrapper = mount(FieldsPanel, {
+        props: { document: LLM, canEdit: false },
+        attachTo: document.body,
+      });
+      await wrapper.find(EYE).trigger(event);
+      expect(wrapper.find(".evidence").exists()).toBe(true);
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await nextTick();
+
+      expect(wrapper.find(".evidence").exists()).toBe(false);
+      expect(wrapper.find(EYE).attributes("aria-expanded")).toBe("false");
+      wrapper.unmount();
+    });
   });
 });
