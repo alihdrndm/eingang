@@ -1,5 +1,8 @@
 # Security updates for all dependencies are switched on in the repository settings.
-# Version updates only for the CI actions, which are pinned to commit SHAs.
+# Version updates for the CI actions, which are pinned to commit SHAs, and for the container
+# images. The runtime images stay on the Python and Node versions the project targets
+# (backend/pyproject.toml, .nvmrc) and PostgreSQL stays on its major version, because each of
+# those is a deliberate upgrade, not a routine bump.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -11,3 +14,35 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: ci
+
+  # backend/docker/api.Dockerfile, backend/docker/worker.Dockerfile and frontend/Dockerfile.
+  - package-ecosystem: docker
+    directories:
+      - /backend/docker
+      - /frontend
+    schedule:
+      interval: monthly
+    groups:
+      docker:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: python
+        versions: [">=3.14"]
+      - dependency-name: node
+        versions: [">=25"]
+    commit-message:
+      prefix: build
+
+  # compose.yaml: postgres and temporal for development and the e2e stack.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      docker-compose:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: build
