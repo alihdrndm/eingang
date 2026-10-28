@@ -164,19 +164,22 @@ function focusPageHeading(): void {
   // Someone is typing in a field that outlives the page (the top-bar search, which opens the
   // inbox as you type): leave them there.
   if (isTextField(document.activeElement)) return;
-  const focus = (): HTMLElement | null => {
+  let focused: HTMLElement | null = null;
+  // `focused` is set before `.focus()`, whose synchronous focusin must not read as the user
+  // moving focus away.
+  const focus = (): void => {
     const heading = document.querySelector<HTMLElement>("h1");
-    if (!heading) return null;
+    if (!heading) return;
     if (!heading.hasAttribute("tabindex"))
       heading.setAttribute("tabindex", "-1");
+    focused = heading;
     heading.focus();
-    return heading;
   };
-  let focused = focus();
+  focus();
   const observer = new MutationObserver(() => {
     const active = document.activeElement;
     if (focused?.isConnected || (active && active !== document.body)) return;
-    focused = focus();
+    focus();
   });
   const onFocusIn = (event: FocusEvent): void => {
     if (event.target !== focused) stop();
@@ -198,6 +201,8 @@ export function installPageChange(router: Router): void {
   router.afterEach((to, from, failure) => {
     if (failure) return;
     document.title = to.meta.title ?? APP_NAME;
+    // Any navigation ends following the previous page's heading.
+    stopFollowing?.();
     // Not on the first load (the browser starts at the top of the page), and not when only the
     // query or hash changes (inbox tabs and filters keep focus where it is).
     if (from === START_LOCATION || to.path === from.path) return;

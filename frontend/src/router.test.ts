@@ -286,6 +286,24 @@ describe("page change focus", () => {
     expect(document.activeElement?.textContent).toBe("Loaded");
   });
 
+  it("follows more than one replaced heading", async () => {
+    const stage = ref(0);
+    const Steps = defineComponent(
+      () => () => h("h1", { key: stage.value }, `Step ${stage.value}`),
+    );
+    small.addRoute({ path: "/steps", component: Steps });
+    await small.push("/steps");
+    await flushPromises();
+    expect(document.activeElement?.textContent).toBe("Step 0");
+
+    for (const next of [1, 2]) {
+      stage.value = next;
+      await nextTick();
+      await flushPromises();
+      expect(document.activeElement?.textContent).toBe(`Step ${next}`);
+    }
+  });
+
   it("leaves a text field that outlives the page alone (the top-bar search)", async () => {
     const field = document.createElement("input");
     document.body.append(field);
