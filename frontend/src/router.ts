@@ -1,3 +1,4 @@
+import { nextTick } from "vue";
 import {
   createRouter,
   createWebHistory,
@@ -5,6 +6,7 @@ import {
   type Router,
   type RouterHistory,
   type RouteRecordRaw,
+  START_LOCATION,
 } from "vue-router";
 
 import { setAuthFailureHandler } from "./api/client";
@@ -14,20 +16,31 @@ declare module "vue-router" {
   interface RouteMeta {
     /** The route needs a signed-in session (every `/app/*` route). */
     requiresAuth?: boolean;
+    /** The document title ("Inbox · Eingang"), WCAG 2.4.2. Pages may refine it once loaded. */
+    title?: string;
   }
 }
 
+const APP_NAME = "Eingang";
+
 export const routes: RouteRecordRaw[] = [
-  { path: "/", name: "home", component: () => import("./views/HomeView.vue") },
+  {
+    path: "/",
+    name: "home",
+    component: () => import("./views/HomeView.vue"),
+    meta: { title: APP_NAME },
+  },
   {
     path: "/accuracy",
     name: "accuracy-public",
     component: () => import("./views/AccuracyPublicView.vue"),
+    meta: { title: "Accuracy · Eingang" },
   },
   {
     path: "/sign-in",
     name: "sign-in",
     component: () => import("./views/SignInView.vue"),
+    meta: { title: "Sign in · Eingang" },
   },
   {
     path: "/app",
@@ -39,43 +52,51 @@ export const routes: RouteRecordRaw[] = [
         path: "inbox",
         name: "inbox",
         component: () => import("./views/InboxView.vue"),
+        meta: { title: "Inbox · Eingang" },
       },
       {
         path: "invoices/:id",
         name: "invoice",
         component: () => import("./views/InvoiceReviewView.vue"),
+        meta: { title: "Invoice review · Eingang" },
         props: true,
       },
       {
         path: "approvals",
         name: "approvals",
         component: () => import("./views/ApprovalsView.vue"),
+        meta: { title: "Approvals · Eingang" },
       },
       {
         path: "suppliers",
         name: "suppliers",
         component: () => import("./views/SuppliersView.vue"),
+        meta: { title: "Suppliers · Eingang" },
       },
       {
         path: "suppliers/:id",
         name: "supplier",
         component: () => import("./views/SupplierDetailView.vue"),
+        meta: { title: "Supplier · Eingang" },
         props: true,
       },
       {
         path: "exports",
         name: "exports",
         component: () => import("./views/ExportsView.vue"),
+        meta: { title: "Exports · Eingang" },
       },
       {
         path: "accuracy",
         name: "accuracy",
         component: () => import("./views/AccuracyView.vue"),
+        meta: { title: "Accuracy · Eingang" },
       },
       {
         path: "settings",
         name: "settings",
         component: () => import("./views/SettingsView.vue"),
+        meta: { title: "Settings · Eingang" },
       },
     ],
   },
@@ -83,6 +104,7 @@ export const routes: RouteRecordRaw[] = [
     path: "/:pathMatch(.*)*",
     name: "not-found",
     component: () => import("./views/NotFoundView.vue"),
+    meta: { title: "Not found · Eingang" },
   },
 ];
 
@@ -118,10 +140,81 @@ export function installGuards(router: Router): void {
   });
 }
 
+/** How long focus follows a page's replaced <h1> (a slow invoice load). */
+const FOLLOW_MS = 10_000;
+
+let stopFollowing: (() => void) | null = null;
+
+function isTextField(element: Element | null): boolean {
+  return (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement ||
+    (element instanceof HTMLElement && element.isContentEditable)
+  );
+}
+
+/**
+ * Moves keyboard focus to the new page's <h1> (WCAG 2.4.3), which also makes screen readers
+ * announce the page. Pages swap their loading <h1> for the loaded one; while focus is still
+ * where it was put, it follows to the replacement, until the user moves it or navigates on.
+ */
+function focusPageHeading(): void {
+  stopFollowing?.();
+  // Someone is typing in a field that outlives the page (the top-bar search, which opens the
+  // inbox as you type): leave them there.
+  if (isTextField(document.activeElement)) return;
+  let focused: HTMLElement | null = null;
+  // `focused` is set before `.focus()`, whose synchronous focusin must not read as the user
+  // moving focus away.
+  const focus = (): void => {
+    const heading = document.querySelector<HTMLElement>("h1");
+    if (!heading) return;
+    if (!heading.hasAttribute("tabindex"))
+      heading.setAttribute("tabindex", "-1");
+    focused = heading;
+    heading.focus();
+  };
+  focus();
+  const observer = new MutationObserver(() => {
+    const active = document.activeElement;
+    if (focused?.isConnected || (active && active !== document.body)) return;
+    focus();
+  });
+  const onFocusIn = (event: FocusEvent): void => {
+    if (event.target !== focused) stop();
+  };
+  const stop = (): void => {
+    observer.disconnect();
+    document.removeEventListener("focusin", onFocusIn);
+    clearTimeout(timer);
+    stopFollowing = null;
+  };
+  observer.observe(document.body, { childList: true, subtree: true });
+  document.addEventListener("focusin", onFocusIn);
+  const timer = setTimeout(stop, FOLLOW_MS);
+  stopFollowing = stop;
+}
+
+/** Sets the document title on every navigation and moves focus when the page changes. */
+export function installPageChange(router: Router): void {
+  router.afterEach((to, from, failure) => {
+    if (failure) return;
+    document.title = to.meta.title ?? APP_NAME;
+    // Any navigation ends following the previous page's heading.
+    stopFollowing?.();
+    // Not on the first load (the browser starts at the top of the page), and not when only the
+    // query or hash changes (inbox tabs and filters keep focus where it is).
+    if (from === START_LOCATION || to.path === from.path) return;
+    void nextTick(focusPageHeading);
+  });
+}
+
 export function createAppRouter(
   history: RouterHistory = createWebHistory(),
 ): Router {
   const router = createRouter({ history, routes });
   installGuards(router);
+  installPageChange(router);
   return router;
 }

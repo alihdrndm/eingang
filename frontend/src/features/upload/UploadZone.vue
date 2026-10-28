@@ -186,8 +186,8 @@ const announcement = computed(() => {
       >
     </div>
     <p v-if="tooMany" class="too-many" role="alert">
-      <Icon name="triangle" :size="16" />Only the first 10 files were added.
-      Drop the rest in a second batch.
+      <Icon class="too-many__icon" name="triangle" :size="16" />Only the first
+      10 files were added. Drop the rest in a second batch.
     </p>
     <ul v-if="queue.rows.length" class="rows" aria-label="Uploads">
       <UploadFileRow
@@ -264,6 +264,10 @@ const announcement = computed(() => {
   display: flex;
   gap: var(--space-8);
   align-items: center;
+  color: var(--warn-text);
+}
+
+.too-many__icon {
   color: var(--warn);
 }
 

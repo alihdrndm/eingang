@@ -1,5 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nextTick } from "vue";
 
 import { resetCsrfToken } from "../../api/client";
 import type { components } from "../../api/schema";
@@ -126,17 +127,71 @@ describe("FieldsPanel", () => {
     });
     await wrapper.find('[aria-label="Edit Gross"]').trigger("click");
     const input = wrapper.find("input");
-    await input.setValue("1.547,00");
+    await input.setValue("1.547");
     await wrapper.find("form").trigger("submit");
-    expect(wrapper.text()).toContain("Enter an amount like 1190.00.");
+    expect(wrapper.text()).toContain(
+      "Enter an amount like 1.190,00 or 1190.00.",
+    );
     expect(calls).toHaveLength(0);
-    await input.setValue("1547.10");
+    await input.setValue("1.547,10");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
     const patch = calls.find((call) => call.method === "PATCH");
     expect(patch?.path).toBe("/api/v1/documents/doc-8/invoice");
     expect(JSON.parse(patch?.body ?? "{}")).toEqual({ gross_total: "1547.10" });
     expect(wrapper.emitted("saved")).toHaveLength(1);
+    expect(document.activeElement).toBe(
+      wrapper.find('[aria-label="Edit Gross"]').element,
+    );
+    wrapper.unmount();
+  });
+
+  it("asks for a decimal keyboard for amounts only", async () => {
+    const wrapper = mount(FieldsPanel, {
+      props: { document: LLM, canEdit: true },
+      attachTo: document.body,
+    });
+    await wrapper.find('[aria-label="Edit Gross"]').trigger("click");
+    expect(wrapper.find("input").attributes("inputmode")).toBe("decimal");
+    await wrapper.find("input").trigger("keydown", { key: "Escape" });
+    await wrapper.find('[aria-label="Edit Invoice number"]').trigger("click");
+    expect(wrapper.find("input").attributes("inputmode")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it.each([
+    [
+      "Escape",
+      (form: ReturnType<typeof mount>) =>
+        form.find("input").trigger("keydown", { key: "Escape" }),
+    ],
+    [
+      "Cancel",
+      (form: ReturnType<typeof mount>) =>
+        form
+          .findAll("button")
+          .find((button) => button.text() === "Cancel")
+          ?.trigger("click"),
+    ],
+    [
+      "Save without changes",
+      (form: ReturnType<typeof mount>) => form.find("form").trigger("submit"),
+    ],
+  ])("returns focus to the Edit button after %s", async (_, end) => {
+    const wrapper = mount(FieldsPanel, {
+      props: { document: LLM, canEdit: true },
+      attachTo: document.body,
+    });
+    await wrapper.find('[aria-label="Edit Gross"]').trigger("click");
+    expect(document.activeElement).toBe(wrapper.find("input").element);
+
+    await end(wrapper);
+    await flushPromises();
+
+    expect(wrapper.find("form").exists()).toBe(false);
+    expect(document.activeElement).toBe(
+      wrapper.find('[aria-label="Edit Gross"]').element,
+    );
     wrapper.unmount();
   });
 
@@ -183,5 +238,81 @@ describe("FieldsPanel", () => {
     expect(wrapper.find("mark").text()).toBe("2026-1043");
     await eye.trigger("blur");
     expect(wrapper.find("mark").exists()).toBe(false);
+  });
+
+  describe("hover preview (WCAG 1.4.13)", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    const EYE = '[aria-label="Show where Invoice number came from"]';
+
+    it("stays open while the pointer moves from the eye onto the evidence", async () => {
+      const wrapper = mount(FieldsPanel, {
+        props: { document: LLM, canEdit: false },
+        attachTo: document.body,
+      });
+      await wrapper.find(EYE).trigger("mouseenter");
+      await wrapper.find(EYE).trigger("mouseleave");
+      await vi.advanceTimersByTimeAsync(100);
+      await wrapper.find(".evidence").trigger("mouseenter");
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // The button inside can be reached.
+      const showInDocument = wrapper
+        .findAll(".evidence button")
+        .find((button) => button.text() === "Show in document");
+      expect(showInDocument?.exists()).toBe(true);
+      await showInDocument?.trigger("click");
+      expect(wrapper.emitted("select-field")).toEqual([["invoice_number"]]);
+
+      await wrapper.find(".evidence").trigger("mouseleave");
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(wrapper.find(".evidence").exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("hides after a short delay when the pointer leaves the eye", async () => {
+      const wrapper = mount(FieldsPanel, {
+        props: { document: LLM, canEdit: false },
+      });
+      await wrapper.find(EYE).trigger("mouseenter");
+      await wrapper.find(EYE).trigger("mouseleave");
+      expect(wrapper.find(".evidence").exists()).toBe(true);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(wrapper.find(".evidence").exists()).toBe(false);
+    });
+
+    it("keeps the evidence while focus moves into it", async () => {
+      const wrapper = mount(FieldsPanel, {
+        props: { document: LLM, canEdit: false },
+        attachTo: document.body,
+      });
+      const eye = wrapper.find<HTMLButtonElement>(EYE);
+      eye.element.focus();
+      await nextTick();
+      wrapper.get<HTMLButtonElement>(".evidence button").element.focus();
+      await nextTick();
+      expect(wrapper.find(".evidence").exists()).toBe(true);
+      wrapper.unmount();
+    });
+
+    it.each([
+      ["hovered", "mouseenter"],
+      ["pinned", "click"],
+    ])("closes on Escape when %s", async (_, event) => {
+      const wrapper = mount(FieldsPanel, {
+        props: { document: LLM, canEdit: false },
+        attachTo: document.body,
+      });
+      await wrapper.find(EYE).trigger(event);
+      expect(wrapper.find(".evidence").exists()).toBe(true);
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await nextTick();
+
+      expect(wrapper.find(".evidence").exists()).toBe(false);
+      expect(wrapper.find(EYE).attributes("aria-expanded")).toBe("false");
+      wrapper.unmount();
+    });
   });
 });

@@ -110,10 +110,84 @@ export function fieldRows(invoice: InvoiceDetail): FieldRowState[] {
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const AMOUNT = /^-?\d+(\.\d{1,2})?$/;
+const GERMAN_DATE = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const COUNTRY = /^[A-Z]{2}$/;
 const TYPE_CODE = /^\d{3}$/;
+
+/** A plain dot-decimal (`1190.00`, `1.234`) is read as written, as by the backend. */
+const PLAIN_AMOUNT = /^\d+(?:\.\d+)?$/;
+/** Digit groups split by dots, commas, spaces (also no-break and narrow) or apostrophes. */
+const AMOUNT_BODY = /^\d+(?:[.,'’   ]\d+)*$/;
+const AMOUNT_MARKS = /[.,'’   ]/;
+const GROUP_ONLY_MARKS = new Set(["'", "’", " ", " ", " "]);
+
+/** `body` as digit groups of three split by one kind of mark, or null if it is not that. */
+function grouped(body: string, marks: ReadonlySet<string>): string | null {
+  if (marks.size > 1 && ![...marks].every((mark) => GROUP_ONLY_MARKS.has(mark)))
+    return null;
+  const [first = "", ...rest] = body.split(AMOUNT_MARKS);
+  if (rest.length === 0 || first.length > 3 || first.startsWith("0"))
+    return null;
+  if (rest.some((group) => group.length !== 3)) return null;
+  return first + rest.join("");
+}
+
+/**
+ * An amount typed in German or English style as the API's plain decimal (`1.190,00` →
+ * `1190.00`), or null if it is not one. The same rules as the backend's reading of invoices
+ * (docs/DECISIONS.md, "Extraction grading"): a plain dot-decimal is read as written; with
+ * both `.` and `,` the last one is the decimal mark; spaces and apostrophes group thousands;
+ * one mark used more than once groups thousands; one mark used once and followed by exactly
+ * three digits (first group 1-3 digits, not starting with 0) groups thousands (`1,190` is
+ * 1190); any other single mark is the decimal mark (`1190,5`).
+ */
+export function parseAmount(text: string): string | null {
+  let value = text.trim().replace(/−/g, "-");
+  const negative = value.startsWith("-");
+  if (negative) value = value.slice(1).trim();
+  const sign = negative ? "-" : "";
+  if (PLAIN_AMOUNT.test(value)) return sign + value;
+  if (!AMOUNT_BODY.test(value)) return null;
+  const marks = [...value].filter((char) => !/\d/.test(char));
+  const thousands = grouped(value, new Set(marks));
+  if (thousands !== null) return sign + thousands;
+  const last = marks.at(-1);
+  if (last !== "." && last !== ",") return null;
+  const at = value.lastIndexOf(last);
+  const whole = value.slice(0, at);
+  const fraction = value.slice(at + 1);
+  const wholeMarks = new Set([...whole].filter((char) => !/\d/.test(char)));
+  if (wholeMarks.has(last)) return null;
+  const integer = wholeMarks.size ? grouped(whole, wholeMarks) : whole;
+  return integer === null ? null : `${sign}${integer}.${fraction}`;
+}
+
+/** A date typed as YYYY-MM-DD or DD.MM.YYYY (also D.M.YYYY) as YYYY-MM-DD, or null. */
+export function parseDate(text: string): string | null {
+  const value = text.trim();
+  let year: number, month: number, day: number;
+  const german = GERMAN_DATE.exec(value);
+  if (german) {
+    [day, month, year] = german.slice(1).map(Number) as [
+      number,
+      number,
+      number,
+    ];
+  } else if (DATE.test(value)) {
+    [year, month, day] = value.split("-").map(Number) as [
+      number,
+      number,
+      number,
+    ];
+  } else {
+    return null;
+  }
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day)
+    return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
 
 /** The inline error for a value typed into a field, or null when it can be saved. */
 export function validate(def: FieldDef, raw: string): string | null {
@@ -121,11 +195,15 @@ export function validate(def: FieldDef, raw: string): string | null {
   if (value === "") return null; // clearing a field is allowed
   switch (def.kind) {
     case "date":
-      return DATE.test(value) && !Number.isNaN(Date.parse(value))
+      return parseDate(value)
         ? null
-        : "Enter the date as YYYY-MM-DD.";
-    case "amount":
-      return AMOUNT.test(value) ? null : "Enter an amount like 1190.00.";
+        : "Enter the date as DD.MM.YYYY or YYYY-MM-DD.";
+    case "amount": {
+      const amount = parseAmount(value);
+      return amount && !/\.\d{3,}$/.test(amount)
+        ? null
+        : "Enter an amount like 1.190,00 or 1190.00.";
+    }
     case "email":
       return EMAIL.test(value) ? null : "Enter an email address.";
     case "country":
@@ -141,6 +219,14 @@ export function validate(def: FieldDef, raw: string): string | null {
   }
 }
 
+/** A valid typed value in the API's format: amounts `1190.00`, dates `YYYY-MM-DD`. */
+function normalize(def: FieldDef, value: string): string {
+  if (def.kind === "amount") return parseAmount(value) ?? value;
+  if (def.kind === "date") return parseDate(value) ?? value;
+  if (def.kind === "country") return value.toUpperCase();
+  return value;
+}
+
 /** The PATCH body: only the fields whose value changed; empty text clears a field. */
 export function changes(
   rows: readonly FieldRowState[],
@@ -150,13 +236,10 @@ export function changes(
   for (const row of rows) {
     if (!(row.def.name in draft)) continue;
     const typed = (draft[row.def.name] ?? "").trim();
-    const next = typed === "" ? null : typed;
+    const next = typed === "" ? null : normalize(row.def, typed);
     if (next === row.value) continue;
-    if (next !== null && row.def.kind === "typeCode")
-      body[row.def.name] = Number(next);
-    else if (next !== null && row.def.kind === "country")
-      body[row.def.name] = next.toUpperCase();
-    else body[row.def.name] = next;
+    body[row.def.name] =
+      next !== null && row.def.kind === "typeCode" ? Number(next) : next;
   }
   return body;
 }
