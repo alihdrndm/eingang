@@ -1,11 +1,13 @@
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import pytest
 from django.core.files.storage import storages
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import IntegrityError
 from django.test import override_settings
 from django.test.client import MULTIPART_CONTENT
 
@@ -121,6 +123,46 @@ def test_a_deleted_document_does_not_count_as_duplicate(
     first = upload(api, ("a.xml", S01)).json()["created"][0]["id"]
     Document.objects.filter(id=first).update(deleted_at="2026-03-01T00:00:00Z")
     assert len(upload(api, ("a.xml", S01)).json()["created"]) == 1
+
+
+def test_concurrent_duplicate_upload_is_reported_not_500(
+    signed_in: Callable[[str], ApiClient],
+    started: list[UUID],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    api = signed_in("accountant")
+    first = upload(api, ("a.xml", S01)).json()["created"][0]["id"]
+    # Simulate the race: the pre-check misses the parallel insert, the unique index sees it.
+    monkeypatch.setattr(uploads, "is_duplicate", lambda organization, sha256: False)
+    other = text_pdf([LONG_TEXT])
+    response = upload(api, ("again.xml", S01), ("new.pdf", other))
+    assert response.status_code == 201, response.json()
+    body = response.json()
+    assert body["duplicates"] == [{"filename": "again.xml", "existing_document_id": first}]
+    (created,) = body["created"]  # the other file of the request is still stored
+    assert created["original_filename"] == "new.pdf"
+    assert Document.objects.count() == 2
+    assert Event.objects.filter(type="document.duplicate_upload").count() == 1
+    # The losing insert wrote no file: only the two documents' own originals exist.
+    stored = sorted(path for path in tmp_path.rglob("*") if path.is_file())
+    expected = sorted(tmp_path / document.storage_key for document in Document.objects.all())
+    assert stored == expected
+
+
+@pytest.mark.parametrize(
+    ("constraint", "duplicate"),
+    [("documents_org_sha256_live_uniq", True), ("documents_pkey", False), (None, False)],
+)
+def test_only_the_live_sha256_constraint_counts_as_duplicate(
+    constraint: str | None, duplicate: bool
+) -> None:
+    class DriverError(Exception):  # stands in for psycopg's error and its diagnostics
+        diag = SimpleNamespace(constraint_name=constraint)
+
+    error = IntegrityError("duplicate key")
+    error.__cause__ = DriverError()
+    assert uploads._is_live_duplicate(error) is duplicate
 
 
 def test_FILE_TOO_LARGE_one_file_over_the_limit(
