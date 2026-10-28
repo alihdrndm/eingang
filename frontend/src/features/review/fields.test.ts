@@ -8,6 +8,8 @@ import {
   type FieldDef,
   type InvoiceDetail,
   isMono,
+  parseAmount,
+  parseDate,
   validate,
 } from "./fields";
 
@@ -76,10 +78,28 @@ describe("field rows", () => {
 
 describe("validation", () => {
   it.each([
-    ["issue_date", "2026-02-30x", "Enter the date as YYYY-MM-DD."],
+    [
+      "issue_date",
+      "2026-02-30x",
+      "Enter the date as DD.MM.YYYY or YYYY-MM-DD.",
+    ],
+    ["issue_date", "2026-02-30", "Enter the date as DD.MM.YYYY or YYYY-MM-DD."],
+    ["issue_date", "30.02.2026", "Enter the date as DD.MM.YYYY or YYYY-MM-DD."],
+    ["issue_date", "20.02.26", "Enter the date as DD.MM.YYYY or YYYY-MM-DD."],
     ["issue_date", "2026-02-20", null],
-    ["gross_total", "1.547,00", "Enter an amount like 1190.00."],
+    ["issue_date", "20.02.2026", null],
+    ["issue_date", "1.3.2026", null],
+    ["gross_total", "1.547,00", null],
+    ["gross_total", "1547,00", null],
+    ["gross_total", "1 547,00", null],
     ["gross_total", "1547.00", null],
+    ["gross_total", "1547", null],
+    ["gross_total", "-58,31", null],
+    ["gross_total", "1.547", "Enter an amount like 1.190,00 or 1190.00."],
+    ["gross_total", "0,125", "Enter an amount like 1.190,00 or 1190.00."],
+    ["gross_total", "12,34,56", "Enter an amount like 1.190,00 or 1190.00."],
+    ["gross_total", "1.547,00 €", "Enter an amount like 1.190,00 or 1190.00."],
+    ["gross_total", "abc", "Enter an amount like 1.190,00 or 1190.00."],
     ["seller_email", "nope", "Enter an email address."],
     ["seller_country_code", "deu", "Enter a two-letter country code."],
     ["seller_country_code", "de", null],
@@ -91,7 +111,54 @@ describe("validation", () => {
   });
 });
 
+describe("parsing typed values", () => {
+  it.each([
+    ["1.190,00", "1190.00"],
+    ["1190,00", "1190.00"],
+    ["1 190,00", "1190.00"],
+    ["1 190,00", "1190.00"],
+    ["1.190.000,50", "1190000.50"],
+    ["1,190.00", "1190.00"],
+    ["1190.00", "1190.00"],
+    ["1190", "1190"],
+    ["1190,5", "1190.5"],
+    ["-58,31", "-58.31"],
+    // One mark followed by exactly three digits: the backend's rule (docs/DECISIONS.md).
+    ["1,190", "1190"],
+    ["1.190", "1.190"],
+    ["0,190", "0.190"],
+    ["12,34,56", null],
+    ["1.190,00 EUR", null],
+    ["", null],
+  ])("amount %j is %j", (typed, expected) => {
+    expect(parseAmount(typed)).toBe(expected);
+  });
+
+  it.each([
+    ["2026-10-23", "2026-10-23"],
+    ["23.10.2026", "2026-10-23"],
+    ["3.1.2026", "2026-01-03"],
+    [" 03.01.2026 ", "2026-01-03"],
+    ["29.02.2028", "2028-02-29"],
+    ["29.02.2026", null],
+    ["2026-13-01", null],
+    ["10/23/2026", null],
+  ])("date %j is %j", (typed, expected) => {
+    expect(parseDate(typed)).toBe(expected);
+  });
+});
+
 describe("changes", () => {
+  it("sends amounts and dates in the API's format", () => {
+    const rows = fieldRows(invoice({ gross_total: "1190.00" }));
+    expect(
+      changes(rows, { gross_total: "1.190,00", due_date: "1.4.2026" }),
+    ).toEqual({ due_date: "2026-04-01" });
+    expect(changes(rows, { gross_total: "1 547,10" })).toEqual({
+      gross_total: "1547.10",
+    });
+  });
+
   it("sends only changed fields; empty text clears", () => {
     const rows = fieldRows(
       invoice({ invoice_number: "A-1", currency: "EUR", type_code: 380 }),
