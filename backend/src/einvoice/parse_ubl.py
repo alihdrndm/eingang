@@ -1,5 +1,6 @@
 """UBL 2.1 Invoice / CreditNote → CanonicalInvoice (XPath table in HANDOFF section 2)."""
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -22,13 +23,18 @@ from einvoice.xmlsafe import parse_xml
 
 NS = ns.UBL_NS
 DATE = "%Y-%m-%d"
+# xsd:date may carry a time zone ("2026-10-01Z", "2026-10-01+02:00"); the day is kept as written.
+_DATE_TIMEZONE = re.compile(r"(?<=^\d{4}-\d{2}-\d{2})(?:Z|[+-]\d{2}:\d{2})$")
 TOTALS = "cac:LegalMonetaryTotal"
 SUPPLIER = "cac:AccountingSupplierParty/cac:Party"
 CUSTOMER = "cac:AccountingCustomerParty/cac:Party"
 
 
 def _date(root: etree._Element, path: str, field: str) -> date | None:
-    return to_date(text(root, path, NS), DATE, field, path)
+    value = text(root, path, NS)
+    if value is not None:
+        value = _DATE_TIMEZONE.sub("", value)
+    return to_date(value, DATE, field, path)
 
 
 def _party(root: etree._Element, base: str, *, with_tax_number: bool) -> Party:

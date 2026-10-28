@@ -197,6 +197,29 @@ def test_bad_date_is_a_parse_error() -> None:
         parse_cii(etree.tostring(root))
 
 
+@pytest.mark.parametrize("suffix", ["Z", "+02:00", "-05:00", "+14:00"])
+def test_ubl_date_with_a_time_zone_keeps_the_day(suffix: str) -> None:
+    root = parse_xml(UBL)
+    root.findall("cbc:IssueDate", namespaces=ns.UBL_NS)[0].text = f"2026-03-02{suffix}"
+    root.findall("cbc:DueDate", namespaces=ns.UBL_NS)[0].text = f"2026-04-01{suffix}"
+    invoice = parse_ubl(etree.tostring(root))
+    assert (invoice.issue_date, invoice.due_date) == (date(2026, 3, 2), date(2026, 4, 1))
+
+
+def test_ubl_credit_note_due_date_with_a_time_zone() -> None:
+    root = parse_xml(CREDIT_NOTE)
+    root.findall(".//cbc:PaymentDueDate", namespaces=ns.UBL_NS)[0].text = "2026-03-12Z"
+    assert parse_ubl(etree.tostring(root)).due_date == date(2026, 3, 12)
+
+
+@pytest.mark.parametrize("value", ["2026-03-02T10:00:00", "2026-03-02+2:00", "2026-03-02 Z"])
+def test_ubl_date_with_anything_else_after_the_day_is_a_parse_error(value: str) -> None:
+    root = parse_xml(UBL)
+    root.findall("cbc:IssueDate", namespaces=ns.UBL_NS)[0].text = value
+    with pytest.raises(InvoiceParseError, match="issue_date is not a valid date"):
+        parse_ubl(etree.tostring(root))
+
+
 def test_bad_type_code_is_a_parse_error() -> None:
     root = parse_xml(UBL)
     root.findall(".//cbc:InvoiceTypeCode", namespaces=ns.UBL_NS)[0].text = "x"

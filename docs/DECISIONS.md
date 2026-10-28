@@ -425,3 +425,6 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 
 ### Profile from BT-24
 - **Any CIUS or extension of EN 16931 counts as EN 16931.** A BT-24 that starts with `urn:cen.eu:en16931:2017#compliant#` or `#conformant#` and matches no XRechnung or Factur-X/ZUGFeRD profile (for example Peppol self-billing, `…#compliant#urn:fdc:peppol.eu:2017:poacc:selfbilling:3.0`) is profile `EN 16931`, so it is validated against the EN 16931 rules and C11 doesn't fire. Before, only the bare identifier and Peppol BIS Billing were recognised. Malformed identifiers (`…:2017:compliant:…`, or nothing after the second `#`) stay `UNKNOWN`.
+
+### UBL dates with a time zone
+- **A UBL date's time zone is dropped and the day kept as written.** `xsd:date` allows `2026-10-01Z` or `2026-10-01+02:00`; the invoice's day is what the supplier printed, so converting it to UTC would move it. Anything else after the day (a time, a malformed offset) is still a parse error. CII dates are format 102 (`YYYYMMDD`), which has no time zone, so the CII parser is unchanged.
