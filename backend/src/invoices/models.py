@@ -15,6 +15,10 @@ class AppendOnlyError(Exception):
     """Raised when code tries to change or delete a row of an append-only table."""
 
 
+# One live (not deleted) document per file and organisation; uploads rely on its name.
+LIVE_SHA256_CONSTRAINT = "documents_org_sha256_live_uniq"
+
+
 class Document(BaseModel):
     class Kind(models.TextChoices):
         XML = "xml"
@@ -77,7 +81,7 @@ class Document(BaseModel):
             models.UniqueConstraint(
                 fields=["organization", "sha256"],
                 condition=Q(deleted_at__isnull=True),
-                name="documents_org_sha256_live_uniq",
+                name=LIVE_SHA256_CONSTRAINT,
             )
         ]
         indexes: ClassVar = [

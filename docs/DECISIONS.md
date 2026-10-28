@@ -434,3 +434,8 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 ### Integrity manifest in the ZIP bundle
 - **Did:** the bundle's last entry is `SHA256SUMS`, one `<sha256>  <path>` line for every other file in the ZIP, in the order they were written, so `sha256sum -c SHA256SUMS` checks an unpacked bundle. Each JSON report adds the original's `sha256` as recorded at receipt, `received_at` (RFC 3339 UTC) and `source` (`upload`, `email` or `sample`).
 - **Why:** the tax advisor (and an auditor, GoBD) can check that no file was changed after the export, and that each original is the file Eingang received and when and how it arrived. The manifest doesn't list itself; it proves integrity, not origin, because nothing signs it.
+
+### Concurrent uploads of the same file
+- **Did:** each new file of an upload is stored in its own savepoint. When the insert fails on `documents_org_sha256_live_uniq` (a parallel request stored the same file after the duplicate check), the file is reported in `duplicates` with a `document.duplicate_upload` event, exactly as if the check had found it, and the request's other files are still stored. Any other integrity error still fails the request.
+- **Storage:** nothing is cleaned up, because nothing is left: the document row is inserted before its file is written, and the key holds the new document's own id (`orgs/<org>/documents/<id>/<sha256>.<ext>`), so the losing request never writes, and no key is shared with the existing document.
+- **Not changed:** the mailbox intake keeps failing on this race; the activity is retried and its duplicate check then skips the file.
