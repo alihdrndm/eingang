@@ -68,6 +68,9 @@ _XRECHNUNG_ID = re.compile(
 )
 _EN16931 = "urn:cen.eu:en16931:2017"
 _EN16931_PEPPOL = f"{_EN16931}#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0"
+# Any other CIUS ("#compliant#") or extension ("#conformant#") of EN 16931, such as Peppol
+# self-billing, is still an EN 16931 invoice when no more specific profile matched.
+_EN16931_DERIVED = (f"{_EN16931}#compliant#", f"{_EN16931}#conformant#")
 # Order matters: "...:basic" is a prefix of "...:basicwl", so BASIC WL is tested first.
 _FACTURX_PROFILES: list[tuple[Profile, tuple[str, ...]]] = [
     (Profile.MINIMUM, ("urn:factur-x.eu:1p0:minimum", "urn:zugferd.de:2p0:minimum")),
@@ -88,6 +91,8 @@ def profile_from_spec_id(spec_id: str | None) -> tuple[Profile, str | None]:
         if any(identifier in spec_id for identifier in identifiers):
             return profile, None
     if spec_id in (_EN16931, _EN16931_PEPPOL):
+        return Profile.EN16931, None
+    if spec_id.startswith(_EN16931_DERIVED) and spec_id not in _EN16931_DERIVED:
         return Profile.EN16931, None
     return Profile.UNKNOWN, None
 

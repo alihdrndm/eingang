@@ -196,7 +196,34 @@ def test_profile_en16931(spec_id: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "spec_id", [None, "", "urn:example:something", "urn:cen.eu:en16931:2017#compliant#urn:x"]
+    "spec_id",
+    [
+        "urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:selfbilling:3.0",
+        "urn:cen.eu:en16931:2017#compliant#urn:x",
+        "urn:cen.eu:en16931:2017#conformant#urn:example:extension",
+    ],
+)
+def test_profile_en16931_any_other_cius_or_extension(spec_id: str) -> None:
+    assert profile_from_spec_id(spec_id) == (Profile.EN16931, None)
+
+
+def test_profile_en16931_peppol_self_billing_is_an_einvoice() -> None:
+    spec_id = "urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:selfbilling:3.0"
+    detection = detect(xml.ubl(spec_id), "a.xml")
+    assert detection.profile is Profile.EN16931
+    assert detection.notes == []
+    assert detection.is_einvoice
+
+
+@pytest.mark.parametrize(
+    "spec_id",
+    [
+        None,
+        "",
+        "urn:example:something",
+        "urn:cen.eu:en16931:2017#compliant#",
+        "urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:basic",
+    ],
 )
 def test_profile_unknown(spec_id: str | None) -> None:
     assert profile_from_spec_id(spec_id) == (Profile.UNKNOWN, None)
