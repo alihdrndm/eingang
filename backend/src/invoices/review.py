@@ -42,8 +42,10 @@ LINE_FIELDS = (
 )  # fmt: skip
 # Stored upper-case without spaces (section 2), like the parsed values they are compared to.
 COMPACTED_FIELDS = frozenset({"payee_iban", "payee_bic", "seller_vat_id", "buyer_vat_id"})
-# The audit trail never stores these values, only that they changed.
-UNLOGGED_VALUES = frozenset({"payee_iban"})
+# The audit trail stores these values masked (`mask_iban`), never in full.
+MASKED_VALUES = frozenset({"payee_iban"})
+# Shorter values keep nothing of their content when masked.
+MASK_MIN_LENGTH = 8
 NOTE_MIN, NOTE_MAX = 5, 500
 
 FieldValue = str | int | Decimal | date | None
@@ -70,6 +72,20 @@ def _logged(value: FieldValue) -> str | int | None:
     return str(value)
 
 
+def mask_iban(value: str | int | None) -> str | None:
+    """`DE…3000`: the country code and the last four characters, never the whole IBAN."""
+    if value is None or value == "":
+        return None
+    text = str(value)
+    if len(text) < MASK_MIN_LENGTH:
+        return "…"
+    return f"{text[:2]}…{text[-4:]}"
+
+
+# One edited field and its event data besides the field name.
+Change = tuple[str, dict[str, object]]
+
+
 # --- Editing ------------------------------------------------------------------------
 
 
@@ -89,32 +105,26 @@ def edit_invoice(
         if lines is not None:
             changed.append(_replace_lines(invoice, lines))
         confidence = dict(invoice.field_confidence or {})
-        for name, _old, _new in changed:
+        for name, _data in changed:
             confidence[name] = "edited"
         invoice.field_confidence = confidence
         invoice.save()
-        for name, old, new in changed:
-            data: dict[str, object] = {"field": name}
-            if name in UNLOGGED_VALUES:
-                data["change"] = "changed"
-            else:
-                data.update(old=old, new=new)
+        for name, data in changed:
             Event.objects.create(
                 organization=document.organization,
                 document=document,
                 actor=user,
                 type=Event.Type.INVOICE_FIELDS_EDITED,
-                data=data,
+                data={"field": name, **data},
             )
         if changed:
             match_supplier(invoice)
             checks.recheck(document)
 
 
-def _apply_fields(
-    invoice: Invoice, fields: Mapping[str, FieldValue]
-) -> list[tuple[str, object, object]]:
-    changed: list[tuple[str, object, object]] = []
+def _apply_fields(invoice: Invoice, fields: Mapping[str, FieldValue]) -> list[Change]:
+    """Set the changed fields; each change keeps its old and new value (GoBD)."""
+    changed: list[Change] = []
     for name in EDITABLE_FIELDS:
         if name not in fields:
             continue
@@ -125,15 +135,32 @@ def _apply_fields(
         if old == new:
             continue
         setattr(invoice, name, new)
-        changed.append((name, _logged(old), _logged(new)))
+        if name in MASKED_VALUES:
+            data: dict[str, object] = {
+                "change": "changed",
+                "old": mask_iban(_logged(old)),
+                "new": mask_iban(_logged(new)),
+            }
+        else:
+            data = {"old": _logged(old), "new": _logged(new)}
+        changed.append((name, data))
     return changed
 
 
-def _replace_lines(
-    invoice: Invoice, lines: Sequence[Mapping[str, FieldValue]]
-) -> tuple[str, object, object]:
-    """Lines are replaced as a whole list; positions are renumbered from 1."""
-    old_count = invoice.lines.count()
+def _logged_line(position: int, line: Mapping[str, FieldValue]) -> dict[str, object]:
+    return {"position": position, **{name: _logged(line.get(name)) for name in LINE_FIELDS}}
+
+
+def _replace_lines(invoice: Invoice, lines: Sequence[Mapping[str, FieldValue]]) -> Change:
+    """Lines are replaced as a whole list; positions are renumbered from 1.
+
+    The event keeps both lists in full, because the deleted rows are gone afterwards and
+    a correction must leave the original recognisable (GoBD, section 146(4) AO).
+    """
+    old_lines = [
+        {"position": line.position, **{name: _logged(getattr(line, name)) for name in LINE_FIELDS}}
+        for line in invoice.lines.order_by("position")
+    ]
     invoice.lines.all().delete()
     InvoiceLine.objects.bulk_create(
         InvoiceLine(
@@ -143,7 +170,13 @@ def _replace_lines(
         )
         for position, line in enumerate(lines, start=1)
     )
-    return "lines", old_count, len(lines)
+    new_lines = [_logged_line(position, line) for position, line in enumerate(lines, start=1)]
+    return "lines", {
+        "old": len(old_lines),
+        "new": len(new_lines),
+        "old_lines": old_lines,
+        "new_lines": new_lines,
+    }
 
 
 # --- Checks -------------------------------------------------------------------------

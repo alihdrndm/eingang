@@ -5,6 +5,7 @@ import pytest
 
 from accounts.models import Organization, User
 from eingang import clock
+from invoices.models import Event
 from tests.conftest import ApiClient, MakeUser
 
 pytestmark = pytest.mark.django_db
@@ -328,3 +329,117 @@ def test_member_email_race_is_a_validation_error_not_500(
     response = api.unsafe("patch", f"/api/v1/members/{member.id}", data={"email": other.email})
     assert response.status_code == 422
     assert response.json()["errors"][0]["path"] == "email"
+
+
+# Audit trail
+
+
+def org_events(organization: Organization, kind: str) -> list[Event]:
+    return list(
+        Event.objects.filter(organization=organization, type=kind).order_by("created_at", "id")
+    )
+
+
+def test_organization_patch_records_the_changed_settings(
+    api: ApiClient, make_user: MakeUser, organization: Organization
+) -> None:
+    admin = make_user("admin")
+    api.sign_in(admin)
+    response = api.unsafe(
+        "patch",
+        "/api/v1/organization",
+        data={
+            "name": "Holzwerk Brandt KG",
+            "vat_id": None,
+            "four_eyes": False,
+            "duplicate_window_days": 30,  # unchanged, so not recorded
+            "reminder_after_days": 7,
+        },
+    )
+    assert response.status_code == 200
+    [event] = org_events(organization, "organization.settings_changed")
+    assert event.document_id is None
+    assert event.actor_id == admin.id
+    assert event.data == {
+        "fields": ["name", "vat_id", "four_eyes", "reminder_after_days"],
+        "changes": {
+            "four_eyes": {"old": True, "new": False},
+            "reminder_after_days": {"old": 3, "new": 7},
+        },
+    }
+    # The name and the VAT ID can identify a sole trader: only the field is named.
+    assert "Holzwerk" not in str(event.data)
+    assert "DE291746055" not in str(event.data)
+
+
+def test_organization_patch_without_a_change_records_nothing(
+    signed_in: Callable[[str], ApiClient], organization: Organization
+) -> None:
+    response = signed_in("admin").unsafe(
+        "patch", "/api/v1/organization", data={"duplicate_window_days": 30}
+    )
+    assert response.status_code == 200
+    assert not org_events(organization, "organization.settings_changed")
+
+
+def test_member_create_records_member_created(
+    api: ApiClient, make_user: MakeUser, organization: Organization
+) -> None:
+    admin = make_user("admin")
+    api.sign_in(admin)
+    response = api.unsafe(
+        "post",
+        "/api/v1/members",
+        data={"email": "neu@example.invalid", "name": "Neue Person", "role": "approver"},
+    )
+    assert response.status_code == 201
+    [event] = org_events(organization, "member.created")
+    assert event.document_id is None
+    assert event.actor_id == admin.id
+    assert event.data == {"member_id": response.json()["id"], "role": "approver"}
+
+
+def test_member_patch_records_role_and_activity_changes(
+    api: ApiClient, make_user: MakeUser, organization: Organization
+) -> None:
+    admin = make_user("admin")
+    api.sign_in(admin)
+    member = make_user("viewer")
+    url = f"/api/v1/members/{member.id}"
+    api.unsafe("patch", url, data={"role": "accountant", "is_active": False})
+    api.unsafe("patch", url, data={"role": "accountant", "is_active": True})
+    member_id = str(member.id)
+    [role] = org_events(organization, "member.role_changed")
+    assert role.actor_id == admin.id
+    assert role.data == {"member_id": member_id, "old": "viewer", "new": "accountant"}
+    [deactivated] = org_events(organization, "member.deactivated")
+    assert deactivated.data == {"member_id": member_id}
+    [reactivated] = org_events(organization, "member.reactivated")
+    assert reactivated.data == {"member_id": member_id}
+    assert reactivated.document_id is None
+
+
+def test_member_patch_names_changed_details_without_their_values(
+    signed_in: Callable[[str], ApiClient], make_user: MakeUser, organization: Organization
+) -> None:
+    api = signed_in("admin")
+    member = make_user("viewer")
+    response = api.unsafe(
+        "patch",
+        f"/api/v1/members/{member.id}",
+        data={"email": "anders@example.invalid", "name": "Viewer"},  # name unchanged
+    )
+    assert response.status_code == 200
+    [event] = Event.objects.filter(organization=organization)
+    assert event.type == "member.details_changed"
+    assert event.data == {"member_id": str(member.id), "fields": ["email"]}
+
+
+def test_refused_member_patch_records_nothing(
+    api: ApiClient, make_user: MakeUser, organization: Organization
+) -> None:
+    admin = make_user("admin")
+    api.sign_in(admin)
+    response = api.unsafe("patch", f"/api/v1/members/{admin.id}", data={"role": "viewer"})
+    assert response.status_code == 422
+    assert not Event.objects.filter(organization=organization).exists()

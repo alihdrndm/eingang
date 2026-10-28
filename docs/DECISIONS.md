@@ -307,7 +307,7 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 
 ### Review endpoints
 - **Editable fields:** every scalar canonical field (number, type code, dates, currency, references, party fields, payment fields, totals). `notes` and the VAT breakdown are not editable; lines are replaced as a whole list and renumbered from 1. An empty string clears a field.
-- **Audit trail:** one `invoice.fields_edited` event per changed field. A replaced line list is logged as field `lines` with the old and new line counts. The IBAN's values are never logged, only `"change": "changed"`.
+- **Audit trail:** one `invoice.fields_edited` event per changed field. A replaced line list is logged as field `lines` with the old and new line counts and, since 2026-10-28, both full line lists (see "Edit events keep the original values" below). The IBAN is logged with `"change": "changed"` and, since 2026-10-28, masked old and new values only.
 - **Re-running checks after an edit:** C09 and C12 come from processing (the PDF comparison and the extraction refusal), so the re-run rebuilds that context from the stored C09/C12 checks instead of dropping them.
 - **Resolving C05** confirms the supplier's IBAN (`confirmed_by`, `confirmed_at`, `confirmation_note`) unless it is already confirmed.
 - **Retry:** `failed → processing` is committed first, then the workflow gets signal-with-start `retry`; the workflow re-reads the status, so the commit must come first. If Temporal can't be reached, a system transition moves the document back to `failed` with its old reason and the answer is `503 TEMPORAL_UNAVAILABLE`.
@@ -418,3 +418,24 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 
 ### README
 - **The README has more sections than the planned outline.** Spec: pitch, demo link, three-image strip, then fixed sections. Did: the same sections in the same order, plus a hero image, a four-image feature grid, a contents list, a formats table, the invoice lifecycle diagram, the architecture image (the Mermaid chart is kept in a collapsible block), "Tests and quality" and "Security and privacy". Why: the README is the project's public page; it now names the formats and standards people search for (XRechnung, ZUGFeRD, Factur-X, EN 16931, KoSIT) and shows the evaluation's limits next to its numbers. The only badge is the CI badge.
+
+## 2026-10-28 — Audit trail and export integrity
+
+### Organisation and member events
+- **Did:** organisation settings and member changes are recorded as events with the organisation and the acting admin, and no document: `organization.settings_changed`, `member.created`, `member.role_changed`, `member.details_changed`, `member.deactivated` and `member.reactivated`. Members are named by their id only. A request that changes nothing, or is refused, records nothing; the event is written in the same transaction as the change.
+- **Values:** `organization.settings_changed` lists every changed field in `fields`, and old and new values in `changes` only for `four_eyes`, `duplicate_window_days` and `reminder_after_days`. The organisation's name and VAT ID can identify a sole trader, so like a member's email and name (`member.details_changed`) they are named, never logged with their values. `member.created` records the role.
+- **Why:** who turned off four-eyes, or who gave someone the approver role, is part of the evidence of an approval; the audit trail is the only place that can answer it.
+
+### Edit events keep the original values
+- **Replaces** the earlier rule that a replaced line list is logged with its counts only and the IBAN only as `"change": "changed"`.
+- **Did:** the `invoice.fields_edited` event for `lines` keeps `old` and `new` (the counts, as before, so the timeline is unchanged) and adds `old_lines` and `new_lines`: every line field plus `position`, money and quantities as strings. For `payee_iban` it keeps `"change": "changed"` and adds `old` and `new` masked to the country code and the last four characters (`DE…3000`); an empty value is `null`, and a value shorter than eight characters is only `…`. The timeline still shows no IBAN values.
+- **Why:** GoBD and section 146(4) AO require that a correction leaves the original content recognisable. Lines are deleted and recreated on every edit, so the event is the only record of what they were. The full IBAN is personal data that must never be logged; the masked value still shows which account was replaced by which, and for a matched supplier the full IBANs stay in its IBAN history.
+
+### Integrity manifest in the ZIP bundle
+- **Did:** the bundle's last entry is `SHA256SUMS`, one `<sha256>  <path>` line for every other file in the ZIP, in the order they were written, so `sha256sum -c SHA256SUMS` checks an unpacked bundle. Each JSON report adds the original's `sha256` as recorded at receipt, `received_at` (RFC 3339 UTC) and `source` (`upload`, `email` or `sample`).
+- **Why:** the tax advisor (and an auditor, GoBD) can check that no file was changed after the export, and that each original is the file Eingang received and when and how it arrived. The manifest doesn't list itself; it proves integrity, not origin, because nothing signs it.
+
+### Concurrent uploads of the same file
+- **Did:** each new file of an upload is stored in its own savepoint. When the insert fails on `documents_org_sha256_live_uniq` (a parallel request stored the same file after the duplicate check), the file is reported in `duplicates` with a `document.duplicate_upload` event, exactly as if the check had found it, and the request's other files are still stored. Any other integrity error still fails the request.
+- **Storage:** nothing is cleaned up, because nothing is left: the document row is inserted before its file is written, and the key holds the new document's own id (`orgs/<org>/documents/<id>/<sha256>.<ext>`), so the losing request never writes, and no key is shared with the existing document.
+- **Not changed:** the mailbox intake keeps failing on this race; the activity is retried and its duplicate check then skips the file.

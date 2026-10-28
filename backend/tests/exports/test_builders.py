@@ -1,8 +1,10 @@
 """The export files: column order, formatting, credit notes and the ZIP bundle."""
 
 import csv
+import hashlib
 import io
 import json
+import re
 import zipfile
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
@@ -139,6 +141,7 @@ def test_zip_bundle_contents(organization: Organization, make_user: MakeUser) ->
             "eingang-lines-20260310-0930.csv",
             f"originals/{document.id}-Rechnung_1.xml",
             f"reports/{document.id}.json",
+            "SHA256SUMS",
         ]
     )
     assert archive.read("eingang-invoices-20260310-0930.csv") == builders.csv_invoices(documents)
@@ -151,3 +154,42 @@ def test_zip_bundle_contents(organization: Organization, make_user: MakeUser) ->
     assert [check["check_id"] for check in report["checks"]] == ["C04"]
     assert report["approval"]["decision"] == "approved"
     assert report["approval"]["decided_by"] == "Approver"
+
+
+def test_zip_bundle_report_names_the_receipt(
+    organization: Organization, make_user: MakeUser
+) -> None:
+    document = approved_invoice(organization, make_user)
+    storage.write(document.storage_key, b"<Invoice/>")
+    archive = zipfile.ZipFile(io.BytesIO(builders.zip_bundle(loaded(document), MOMENT)))
+    report = json.loads(archive.read(f"reports/{document.id}.json"))
+    assert report["sha256"] == document.sha256
+    assert report["received_at"] == document.received_at.astimezone(UTC).isoformat().replace(
+        "+00:00", "Z"
+    )
+    assert report["source"] == "upload"
+
+
+def test_zip_bundle_manifest_covers_every_file(
+    organization: Organization, make_user: MakeUser
+) -> None:
+    first = approved_invoice(organization, make_user)
+    second = make_document(organization, status=Document.Status.APPROVED)
+    storage.write(first.storage_key, b"<Invoice/>")
+    storage.write(second.storage_key, b"%PDF-1.7 second")
+    documents = list(
+        builders.export_queryset(Document.objects.filter(id__in=[first.id, second.id]))
+    )
+    archive = zipfile.ZipFile(io.BytesIO(builders.zip_bundle(documents, MOMENT)))
+    manifest = archive.read("SHA256SUMS").decode("utf-8")
+    assert manifest.endswith("\n")
+    sums: dict[str, str] = {}
+    for line in manifest.splitlines():
+        # `sha256sum` format: 64 lower-case hex digits, two spaces, the path.
+        assert re.fullmatch(r"[0-9a-f]{64}  \S.*", line), line
+        digest, path = line.split("  ", 1)
+        sums[path] = digest
+    assert sorted(sums) == sorted(set(archive.namelist()) - {"SHA256SUMS"})
+    for path, digest in sums.items():
+        assert hashlib.sha256(archive.read(path)).hexdigest() == digest
+    assert len(sums) == 6  # two CSVs, two originals, two reports

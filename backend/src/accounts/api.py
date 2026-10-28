@@ -17,7 +17,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import User
+from accounts.models import Organization, User
 from accounts.permissions import (
     AdminOnly,
     AnyMember,
@@ -40,6 +40,7 @@ from accounts.serializers import (
 )
 from eingang.problem import ProblemError
 from eingang.throttles import GeneralThrottle, LoginThrottle
+from invoices.models import Event
 
 TAGS = ["auth"]
 ORGANIZATION_TAGS = ["organization"]
@@ -107,6 +108,16 @@ class MeView(APIView):
 
 # The one organisation setting a sandbox visitor may change.
 SANDBOX_EDITABLE = frozenset({"name"})
+# Settings whose values the audit trail records; for the others (a sole trader's name and
+# VAT ID can identify a person) it records only that they changed.
+LOGGED_SETTINGS = frozenset({"four_eyes", "duplicate_window_days", "reminder_after_days"})
+# Member fields that are personal data: the audit trail names the field, never the value.
+MEMBER_DETAILS = ("email", "name")
+
+
+def _record(organization: Organization, actor: User, kind: str, data: dict[str, object]) -> None:
+    """An organisation event (no document); members are named by their id only."""
+    Event.objects.create(organization=organization, actor=actor, type=kind, data=data)
 
 
 class OrganizationView(APIView):
@@ -134,9 +145,25 @@ class OrganizationView(APIView):
             raise sandbox_restricted()
         payload = OrganizationUpdateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
+        changed: list[str] = []
+        values: dict[str, dict[str, object]] = {}
         for field, value in payload.validated_data.items():
+            old = getattr(organization, field)
+            if old == value:
+                continue
+            changed.append(field)
+            if field in LOGGED_SETTINGS:
+                values[field] = {"old": old, "new": value}
             setattr(organization, field, value)
-        organization.save()
+        with transaction.atomic():
+            organization.save()
+            if changed:
+                _record(
+                    organization,
+                    _actor(request),
+                    Event.Type.ORGANIZATION_SETTINGS_CHANGED,
+                    {"fields": changed, "changes": values},
+                )
         return Response(OrganizationSerializer(organization).data)
 
 
@@ -165,14 +192,21 @@ class MemberListView(APIView):
         payload = MemberCreateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         password = secrets.token_urlsafe(18)
+        organization = organization_of(request)
         try:
             with transaction.atomic():
                 member = User.objects.create_user(
                     payload.validated_data["email"],
                     password,
-                    organization=organization_of(request),
+                    organization=organization,
                     role=payload.validated_data["role"],
                     name=payload.validated_data["name"],
+                )
+                _record(
+                    organization,
+                    _actor(request),
+                    Event.Type.MEMBER_CREATED,
+                    {"member_id": str(member.id), "role": member.role},
                 )
         except IntegrityError as error:
             # Another request created the same address between the check and the insert.
@@ -218,14 +252,55 @@ class MemberDetailView(APIView):
                 errors["role"] = ["You can't change your own role."]
             if errors:
                 raise ValidationError(errors)
+        events = _member_events(member, changes)
         for field, value in changes.items():
             setattr(member, field, value)
         try:
             with transaction.atomic():
                 member.save()
+                for kind, data in events:
+                    _record(member.organization, _actor(request), kind, data)
         except IntegrityError as error:
             # Two requests raced for the same address; the database's unique index decided.
             raise ValidationError(
                 {"email": ["A user with this email address already exists."]}
             ) from error
         return Response(MemberSerializer(member).data)
+
+
+def _actor(request: Request) -> User:
+    """The acting user of an admin-only endpoint (the permission has already checked it)."""
+    user = signed_in_user(request)
+    if user is None:
+        raise NotAuthenticated
+    return user
+
+
+def _member_events(
+    member: User, changes: Mapping[str, object]
+) -> list[tuple[str, dict[str, object]]]:
+    """The audit events of a member update, from the values before it is applied."""
+    member_id = str(member.id)
+    events: list[tuple[str, dict[str, object]]] = []
+    details = [
+        field
+        for field in MEMBER_DETAILS
+        if field in changes and changes[field] != getattr(member, field)
+    ]
+    if details:
+        events.append(
+            (Event.Type.MEMBER_DETAILS_CHANGED, {"member_id": member_id, "fields": details})
+        )
+    if "role" in changes and changes["role"] != member.role:
+        events.append(
+            (
+                Event.Type.MEMBER_ROLE_CHANGED,
+                {"member_id": member_id, "old": member.role, "new": changes["role"]},
+            )
+        )
+    if "is_active" in changes and changes["is_active"] != member.is_active:
+        kind = (
+            Event.Type.MEMBER_REACTIVATED if changes["is_active"] else Event.Type.MEMBER_DEACTIVATED
+        )
+        events.append((kind, {"member_id": member_id}))
+    return events
