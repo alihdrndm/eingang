@@ -1,11 +1,19 @@
 name: CI
 
 on:
+  # Pull requests run on pull_request; push covers main after a merge. Branches pushed
+  # without a pull request get no CI.
   push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
+
+# A new push to a pull request cancels its older run; runs on main always finish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   LLM_ENABLED: "false"
@@ -13,6 +21,8 @@ env:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # Corpus download on a cold cache plus the full test suite with coverage.
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17
@@ -59,6 +69,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -89,6 +100,8 @@ jobs:
   e2e:
     needs: [backend, frontend]
     runs-on: ubuntu-latest
+    # Builds the api, worker and web images without a layer cache before the smoke tests.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0

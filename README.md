@@ -152,7 +152,7 @@ Open http://localhost:3110 and choose **Open the sandbox**, or sign in as `admin
 
 - **1,521 backend tests** with **97%** line coverage, including every instance of the KoSIT XRechnung test suite and the ZUGFeRD corpus.
 - **308 frontend component tests** (Vitest) and **5 end-to-end tests** (Playwright), including one that runs from opening the sandbox to the export.
-- Ruff, mypy in strict mode and import-linter contracts on the backend; ESLint, Prettier and vue-tsc on the frontend. `pnpm verify` runs all of it, and CI runs it on every push.
+- Ruff, mypy in strict mode and import-linter contracts on the backend; ESLint, Prettier and vue-tsc on the frontend. `pnpm verify` runs all of it, and CI runs it on every pull request and on every push to `main`.
 - Every deviation from the original plan is written down in [docs/DECISIONS.md](docs/DECISIONS.md), and every statement not yet checked against a real system is in [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md).
 
 ## Security and privacy
