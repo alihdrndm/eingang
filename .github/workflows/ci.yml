@@ -115,3 +115,13 @@ jobs:
         run: pnpm --filter frontend exec playwright install --with-deps chromium
       - name: Smoke tests
         run: pnpm test:e2e
+      # Playwright keeps a trace of every failed test (frontend/playwright.config.ts); open it
+      # with `pnpm --filter frontend exec playwright show-trace <trace.zip>`.
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-test-results
+          path: frontend/test-results
+          if-no-files-found: ignore
+          retention-days: 7
