@@ -1,7 +1,7 @@
 // pnpm test:e2e: runs the Playwright smoke tests against the full stack in a separate
 // Compose project. The development containers are stopped first (same ports) and the e2e
-// stack is always removed afterwards, also when a test fails. The development database is
-// never touched.
+// stack is always removed afterwards, also when a test fails; on a failure the last lines of
+// every container's log are printed first. The development database is never touched.
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -54,6 +54,19 @@ try {
     status = run("Run Playwright smoke tests", "pnpm", ["--filter", "frontend", "test:e2e"]);
   }
 } finally {
+  if (status !== 0) {
+    // The containers are about to be removed, so their logs are the only trace of the failure.
+    run("Logs of the e2e stack (last 500 lines per container)", "docker", [
+      "compose",
+      "-p",
+      E2E_PROJECT,
+      "--profile",
+      "e2e",
+      "logs",
+      "--no-color",
+      "--tail=500",
+    ]);
+  }
   const downStatus = run("Remove the e2e stack", "docker", [
     "compose",
     "-p",
