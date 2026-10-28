@@ -238,7 +238,11 @@ function evidenceParts(row: FieldRowState): [string, string, string] | null {
                 class="chip"
                 :class="`chip--${row.confidence}`"
               >
-                <ConfidenceBars :level="LEVEL[row.confidence]" label="" />
+                <ConfidenceBars
+                  class="chip__bars"
+                  :level="LEVEL[row.confidence]"
+                  label=""
+                />
                 {{
                   row.confidence === "high"
                     ? "High"
@@ -373,6 +377,12 @@ function evidenceParts(row: FieldRowState): [string, string, string] | null {
   background: var(--block-soft);
 }
 
+/* --muted reaches only 4.4:1 on --block-soft; --muted-strong reaches 6:1 (WCAG 1.4.3). */
+.field--low .field__label,
+.field--low .muted {
+  color: var(--muted-strong);
+}
+
 .field__label {
   display: grid;
   color: var(--muted);
@@ -433,6 +443,11 @@ function evidenceParts(row: FieldRowState): [string, string, string] | null {
 
 .chip--medium {
   background: var(--warn-soft);
+  color: var(--warn-text);
+}
+
+/* Text in --warn-text, the bars in --warn, as in StatusChip and SeverityChip. */
+.chip--medium .chip__bars {
   color: var(--warn);
 }
 
