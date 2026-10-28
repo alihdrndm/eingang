@@ -12,7 +12,7 @@ from decimal import Decimal
 from lxml import etree
 
 from einvoice import namespaces as ns
-from einvoice.model import CREDIT_NOTE_TYPE_CODE, CanonicalInvoice, Line, Party
+from einvoice.model import CanonicalInvoice, Line, Party
 
 XRECHNUNG_3_ID = "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
 # BT-23, required by XRechnung (PEPPOL-EN16931-R001); the value the corpus reference files use.
@@ -156,8 +156,8 @@ def _ubl_line(
 
 
 def to_ubl(invoice: CanonicalInvoice, options: WriteOptions) -> bytes:
-    """A UBL Invoice, or a CreditNote when type_code is 381."""
-    credit_note = invoice.type_code == CREDIT_NOTE_TYPE_CODE
+    """A UBL Invoice, or a CreditNote when type_code is a credit-note code."""
+    credit_note = invoice.is_credit_note
     namespace, tag = (
         (ns.UBL_CREDIT_NOTE, "CreditNote") if credit_note else (ns.UBL_INVOICE, "Invoice")
     )

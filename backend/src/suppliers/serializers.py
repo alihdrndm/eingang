@@ -45,7 +45,8 @@ class SupplierInvoiceSerializer(Serializer):
 
     document_id = serializers.UUIDField()
     invoice_number = serializers.CharField(required=False)
-    type_code = serializers.IntegerField(required=False)  # 381: a credit note, shown negative
+    # A credit-note code (einvoice.model.CREDIT_NOTE_TYPE_CODES): the amount is shown negative.
+    type_code = serializers.IntegerField(required=False)
     issue_date = serializers.DateField(required=False)
     gross_total = serializers.DecimalField(max_digits=18, decimal_places=2, required=False)
     currency = serializers.CharField(required=False)

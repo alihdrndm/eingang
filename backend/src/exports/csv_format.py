@@ -10,7 +10,8 @@ from collections.abc import Iterable, Sequence
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
-CREDIT_NOTE_TYPE_CODE = 381
+from einvoice.model import is_credit_note_type
+
 MONEY_PLACES = Decimal("0.01")
 # A spreadsheet treats a cell starting with one of these as a formula (or strips it).
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
@@ -55,7 +56,7 @@ def yes_no(value: bool | None) -> str:
 
 
 def is_credit_note(type_code: int | None) -> bool:
-    return type_code == CREDIT_NOTE_TYPE_CODE
+    return is_credit_note_type(type_code)
 
 
 def write_csv(header: Sequence[str], rows: Iterable[Sequence[str]]) -> bytes:
