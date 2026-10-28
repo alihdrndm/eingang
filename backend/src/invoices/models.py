@@ -283,7 +283,7 @@ class Approval(BaseModel):
 
 
 class Event(BaseModel):
-    """One entry of a document's audit trail.
+    """One entry of a document's or an organisation's audit trail.
 
     The audit trail is evidence of who did what and when, so it is append-only: a saved
     event can never be changed or deleted through the model.
@@ -306,6 +306,13 @@ class Event(BaseModel):
         REMINDER_SENT = "reminder.sent"
         EXPORT_CREATED = "export.created"
         DOCUMENT_DELETED = "document.deleted"
+        # Organisation events: `document` is NULL.
+        ORGANIZATION_SETTINGS_CHANGED = "organization.settings_changed"
+        MEMBER_CREATED = "member.created"
+        MEMBER_ROLE_CHANGED = "member.role_changed"
+        MEMBER_DETAILS_CHANGED = "member.details_changed"
+        MEMBER_DEACTIVATED = "member.deactivated"
+        MEMBER_REACTIVATED = "member.reactivated"
 
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="events")
     document = models.ForeignKey(

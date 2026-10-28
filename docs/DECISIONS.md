@@ -418,3 +418,10 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 
 ### README
 - **The README has more sections than the planned outline.** Spec: pitch, demo link, three-image strip, then fixed sections. Did: the same sections in the same order, plus a hero image, a four-image feature grid, a contents list, a formats table, the invoice lifecycle diagram, the architecture image (the Mermaid chart is kept in a collapsible block), "Tests and quality" and "Security and privacy". Why: the README is the project's public page; it now names the formats and standards people search for (XRechnung, ZUGFeRD, Factur-X, EN 16931, KoSIT) and shows the evaluation's limits next to its numbers. The only badge is the CI badge.
+
+## 2026-10-28 — Audit trail and export integrity
+
+### Organisation and member events
+- **Did:** organisation settings and member changes are recorded as events with the organisation and the acting admin, and no document: `organization.settings_changed`, `member.created`, `member.role_changed`, `member.details_changed`, `member.deactivated` and `member.reactivated`. Members are named by their id only. A request that changes nothing, or is refused, records nothing; the event is written in the same transaction as the change.
+- **Values:** `organization.settings_changed` lists every changed field in `fields`, and old and new values in `changes` only for `four_eyes`, `duplicate_window_days` and `reminder_after_days`. The organisation's name and VAT ID can identify a sole trader, so like a member's email and name (`member.details_changed`) they are named, never logged with their values. `member.created` records the role.
+- **Why:** who turned off four-eyes, or who gave someone the approver role, is part of the evidence of an approval; the audit trail is the only place that can answer it.
