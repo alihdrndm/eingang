@@ -107,13 +107,13 @@ def test_context_today_defaults_to_the_clock(fixed_clock: clock.FixedClock) -> N
 
 
 def test_C01_line_sum_differs_from_line_total(organization: Organization) -> None:
-    invoice = invoice_on(organization, minutes=1, line_total=Decimal("1000.02"))
-    add_lines(invoice, "600.00", "400.00")
+    invoice = invoice_on(organization, minutes=1, line_total=Decimal("1000.00"))
+    add_lines(invoice, "600.00", "399.98")
     finding = only(run(invoice), "C01")
     assert finding.code == "ARITHMETIC"
     assert finding.details == {"fields": ["line_total"]}
+    assert "999.98" in finding.message
     assert "1000.00" in finding.message
-    assert "1000.02" in finding.message
 
 
 def test_C01_llm_is_block_xml_is_warn(organization: Organization) -> None:
@@ -161,7 +161,7 @@ def test_C01_breakdown_sum_differs_from_tax_total(organization: Organization) ->
         minutes=1,
         tax_breakdown=[
             {"category": "S", "rate": "19.00", "taxable_amount": "500.00", "tax_amount": "95.00"},
-            {"category": "S", "rate": "19.00", "taxable_amount": "500.00", "tax_amount": "94.00"},
+            {"category": "S", "rate": "18.80", "taxable_amount": "500.00", "tax_amount": "94.00"},
         ],
     )
     assert only(run(invoice), "C01").details == {"fields": ["tax_total"]}
@@ -190,7 +190,7 @@ def test_C01_lists_every_failed_comparison(organization: Organization) -> None:
     add_lines(invoice, "1.00")
     finding = only(run(invoice), "C01")
     assert finding.details == {
-        "fields": ["line_total", "gross_total", "tax_total", "payable_amount"]
+        "fields": ["line_total", "net_total", "gross_total", "tax_total", "payable_amount"]
     }
 
 
@@ -217,13 +217,147 @@ def test_C01_skips_none_fields(organization: Organization) -> None:
 
 
 def test_C01_skips_the_line_sum_without_lines(organization: Organization) -> None:
-    invoice = invoice_on(organization, minutes=1, line_total=Decimal("999.00"))
+    invoice = invoice_on(
+        organization, minutes=1, line_total=Decimal("999.00"), charge_total=Decimal("1.00")
+    )
     assert "C01" not in ids(run(invoice))
 
 
 def test_C01_skips_the_line_sum_when_a_line_has_no_amount(organization: Organization) -> None:
-    invoice = invoice_on(organization, minutes=1, line_total=Decimal("999.00"))
+    invoice = invoice_on(
+        organization, minutes=1, line_total=Decimal("999.00"), charge_total=Decimal("1.00")
+    )
     add_lines(invoice, "1.00", None)
+    assert "C01" not in ids(run(invoice))
+
+
+def test_C01_BR_CO_13_net_total_differs_from_line_total(organization: Organization) -> None:
+    invoice = invoice_on(organization, minutes=1, line_total=Decimal("1050.00"))
+    finding = only(run(invoice), "C01")
+    assert finding.details == {"fields": ["net_total"]}
+    assert "1050.00" in finding.message
+    assert "1000.00" in finding.message
+
+
+def test_C01_BR_CO_13_allowances_and_charges_count(organization: Organization) -> None:
+    adds_up = invoice_on(
+        organization,
+        minutes=1,
+        line_total=Decimal("1050.00"),
+        allowance_total=Decimal("60.00"),
+        charge_total=Decimal("10.00"),
+    )
+    assert "C01" not in ids(run(adds_up))
+    off_by_two_cents = invoice_on(
+        organization,
+        minutes=2,
+        line_total=Decimal("1050.00"),
+        allowance_total=Decimal("50.02"),
+        seller_name="B GmbH",
+    )
+    assert only(run(off_by_two_cents), "C01").details == {"fields": ["net_total"]}
+
+
+def test_C01_BR_CO_13_needs_line_total_and_net_total(organization: Organization) -> None:
+    no_line_total = invoice_on(organization, minutes=1, allowance_total=Decimal("50.00"))
+    assert "C01" not in ids(run(no_line_total))
+    no_net_total = invoice_on(
+        organization,
+        minutes=2,
+        line_total=Decimal("5.00"),
+        net_total=None,
+        tax_breakdown=[],
+        seller_name="B GmbH",
+    )
+    assert "C01" not in ids(run(no_net_total))
+
+
+def test_C01_taxable_amounts_differ_from_net_total(organization: Organization) -> None:
+    invoice = invoice_on(
+        organization,
+        minutes=1,
+        tax_breakdown=[
+            {"category": "S", "rate": "19.00", "taxable_amount": "900.00", "tax_amount": "171.00"},
+            {"category": "Z", "rate": "0.00", "taxable_amount": "99.00", "tax_amount": "0.00"},
+        ],
+        tax_total=Decimal("171.00"),
+        gross_total=Decimal("1171.00"),
+        payable_amount=Decimal("1171.00"),
+    )
+    finding = only(run(invoice), "C01")
+    assert finding.details == {"fields": ["tax_breakdown"]}
+    assert "999.00" in finding.message
+
+
+def test_C01_taxable_amounts_skipped_when_a_row_has_none(organization: Organization) -> None:
+    invoice = invoice_on(
+        organization,
+        minutes=1,
+        tax_breakdown=[{"category": "S", "rate": "19.00", "tax_amount": "190.00"}],
+    )
+    assert "C01" not in ids(run(invoice))
+
+
+def test_C01_BR_CO_17_row_tax_differs_from_taxable_times_rate(organization: Organization) -> None:
+    invoice = invoice_on(
+        organization,
+        minutes=1,
+        tax_breakdown=[
+            {"category": "S", "rate": "7.00", "taxable_amount": "1000.00", "tax_amount": "190.00"}
+        ],
+    )
+    finding = only(run(invoice), "C01")
+    assert finding.details == {"fields": ["tax_breakdown"]}
+    assert "7.00% of 1000.00 is 70.00" in finding.message
+
+
+def test_C01_BR_CO_17_rounds_to_the_cent_with_one_cent_tolerance(
+    organization: Organization,
+) -> None:
+    # 19% of 33.33 is 6.3327, which rounds to 6.33.
+    def invoice_with_tax(minutes: int, tax: str) -> Invoice:
+        return invoice_on(
+            organization,
+            minutes=minutes,
+            seller_name=f"Seller {minutes}",
+            net_total=Decimal("33.33"),
+            tax_total=Decimal(tax),
+            gross_total=Decimal("33.33") + Decimal(tax),
+            payable_amount=Decimal("33.33") + Decimal(tax),
+            tax_breakdown=[
+                {"category": "S", "rate": "19.00", "taxable_amount": "33.33", "tax_amount": tax}
+            ],
+        )
+
+    assert "C01" not in ids(run(invoice_with_tax(1, "6.33")))
+    assert "C01" not in ids(run(invoice_with_tax(2, "6.34")))
+    assert only(run(invoice_with_tax(3, "6.35")), "C01").details == {"fields": ["tax_breakdown"]}
+
+
+def test_C01_BR_CO_17_names_each_wrong_row_once_in_fields(organization: Organization) -> None:
+    invoice = invoice_on(
+        organization,
+        minutes=1,
+        tax_breakdown=[
+            {"category": "S", "rate": "19.00", "taxable_amount": "500.00", "tax_amount": "90.00"},
+            {"category": "S", "rate": "19.00", "taxable_amount": "500.00", "tax_amount": "100.00"},
+        ],
+    )
+    finding = only(run(invoice), "C01")
+    assert finding.details == {"fields": ["tax_breakdown"]}
+    assert "is 95.00, but the tax amount is 90.00" in finding.message
+    assert "is 95.00, but the tax amount is 100.00" in finding.message
+
+
+def test_C01_BR_CO_17_skips_a_row_without_a_rate(organization: Organization) -> None:
+    invoice = invoice_on(
+        organization,
+        minutes=1,
+        tax_total=Decimal("0.00"),
+        gross_total=Decimal("1000.00"),
+        payable_amount=Decimal("1000.00"),
+        tax_breakdown=[{"category": "O", "taxable_amount": "1000.00", "tax_amount": "0.00"}],
+    )
     assert "C01" not in ids(run(invoice))
 
 

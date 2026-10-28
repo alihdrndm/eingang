@@ -9,7 +9,7 @@ the audit trail.
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Q, QuerySet
@@ -233,22 +233,50 @@ def _line_sum(invoice: Invoice) -> Decimal | None:
     return sum((amount for amount in amounts if amount is not None), Decimal(0))
 
 
-def _breakdown_tax_sum(invoice: Invoice) -> Decimal | None:
-    """Σ breakdown tax amounts; None without a breakdown or with an unreadable row.
+def _breakdown_rows(invoice: Invoice) -> list[object]:
+    rows: object = invoice.tax_breakdown
+    return rows if isinstance(rows, list) else []
+
+
+def _breakdown_sum(invoice: Invoice, key: str) -> Decimal | None:
+    """Σ of one breakdown amount; None without a breakdown or with an unreadable row.
 
     An empty breakdown is "not given" (for example on a plain-PDF extraction), not a sum of
     zero, so it does not fake a difference (docs/DECISIONS.md).
     """
-    rows: object = invoice.tax_breakdown
-    if not isinstance(rows, list) or not rows:
+    rows = _breakdown_rows(invoice)
+    if not rows:
         return None
     total = Decimal(0)
     for row in rows:
-        amount = _decimal(row.get("tax_amount")) if isinstance(row, dict) else None
+        amount = _decimal(row.get(key)) if isinstance(row, dict) else None
         if amount is None:
             return None
         total += amount
     return total
+
+
+def _breakdown_row_problems(invoice: Invoice) -> list[str]:
+    """BR-CO-17: each row's tax is its taxable amount * rate / 100, rounded to the cent.
+
+    A row without a rate, taxable amount or tax amount is skipped.
+    """
+    problems: list[str] = []
+    for row in _breakdown_rows(invoice):
+        if not isinstance(row, dict):
+            continue
+        rate = _decimal(row.get("rate"))
+        taxable = _decimal(row.get("taxable_amount"))
+        tax = _decimal(row.get("tax_amount"))
+        if rate is None or taxable is None or tax is None:
+            continue
+        expected = (taxable * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
+        if _differs(expected, tax):
+            problems.append(
+                f"in the VAT breakdown, {rate.quantize(CENT)}% of {_money(taxable)} is "
+                f"{_money(expected)}, but the tax amount is {_money(tax)}"
+            )
+    return problems
 
 
 # --- C01 to C08 -----------------------------------------------------------------------------
@@ -269,6 +297,20 @@ def _c01_arithmetic(invoice: Invoice, context: CheckContext) -> list[Finding]:
         )
 
     net, tax, gross = invoice.net_total, invoice.tax_total, invoice.gross_total
+    if line_total is not None and net is not None:
+        # BR-CO-13. No document-level allowance or charge total means none (EN 16931).
+        allowances = invoice.allowance_total or Decimal(0)
+        charges = invoice.charge_total or Decimal(0)
+        expected_net = line_total - allowances + charges
+        if _differs(expected_net, net):
+            problems.append(
+                (
+                    "net_total",
+                    f"line total minus allowances plus charges is {_money(expected_net)}, "
+                    f"but the net total is {_money(net)}",
+                )
+            )
+
     if net is not None and tax is not None and gross is not None and _differs(net + tax, gross):
         problems.append(
             (
@@ -278,7 +320,7 @@ def _c01_arithmetic(invoice: Invoice, context: CheckContext) -> list[Finding]:
             )
         )
 
-    breakdown_sum = _breakdown_tax_sum(invoice)
+    breakdown_sum = _breakdown_sum(invoice, "tax_amount")
     if breakdown_sum is not None and tax is not None and _differs(breakdown_sum, tax):
         problems.append(
             (
@@ -287,6 +329,18 @@ def _c01_arithmetic(invoice: Invoice, context: CheckContext) -> list[Finding]:
                 f"but the tax total is {_money(tax)}",
             )
         )
+
+    taxable_sum = _breakdown_sum(invoice, "taxable_amount")
+    if taxable_sum is not None and net is not None and _differs(taxable_sum, net):
+        problems.append(
+            (
+                "tax_breakdown",
+                f"the taxable amounts in the VAT breakdown add up to {_money(taxable_sum)}, "
+                f"but the net total is {_money(net)}",
+            )
+        )
+
+    problems.extend(("tax_breakdown", text) for text in _breakdown_row_problems(invoice))
 
     prepaid, payable = invoice.prepaid_amount, invoice.payable_amount
     if (
@@ -317,7 +371,7 @@ def _c01_arithmetic(invoice: Invoice, context: CheckContext) -> list[Finding]:
             code="ARITHMETIC",
             severity=severity,
             message=message,
-            details={"fields": [name for name, _ in problems]},
+            details={"fields": list(dict.fromkeys(name for name, _ in problems))},
         )
     ]
 
