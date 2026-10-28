@@ -3,6 +3,7 @@
 The builders read documents loaded with `export_queryset` and return the file's bytes.
 """
 
+import hashlib
 import io
 import json
 import re
@@ -49,6 +50,8 @@ CONTENT_TYPE: dict[str, str] = {
     Format.ZIP_BUNDLE: "application/zip",
 }
 UNSAFE_NAME_CHARACTERS = re.compile(r"[^A-Za-z0-9._-]")
+# The bundle's integrity manifest, in `sha256sum` format (`sha256sum -c SHA256SUMS`).
+MANIFEST_NAME = "SHA256SUMS"
 
 
 def filename(export_format: str, moment: datetime) -> str:
@@ -190,7 +193,11 @@ def _json_value(value: object) -> object:
 
 
 def report(document: Document) -> dict[str, object]:
-    """`reports/<Eingang-ID>.json`: canonical invoice, validation issues, checks, approval."""
+    """`reports/<Eingang-ID>.json`: receipt, canonical invoice, validation, checks, approval.
+
+    `sha256` is the original's hash recorded when it was received, so a reader can tell
+    that the original in the bundle is the file that arrived.
+    """
     invoice = _invoice(document)
     canonical: dict[str, object] | None = None
     if invoice is not None:
@@ -214,6 +221,9 @@ def report(document: Document) -> dict[str, object]:
     return {
         "eingang_id": document.id,
         "original_filename": document.original_filename,
+        "sha256": document.sha256,
+        "received_at": document.received_at,
+        "source": document.source,
         "format": document.format_label,
         "invoice": canonical,
         "validation": None
@@ -259,18 +269,37 @@ def _add(archive: zipfile.ZipFile, name: str, data: bytes, moment: datetime) -> 
     archive.writestr(entry, data)
 
 
+class _Bundle:
+    """Writes entries into the ZIP and remembers each one's SHA-256 for the manifest."""
+
+    def __init__(self, archive: zipfile.ZipFile, moment: datetime) -> None:
+        self.archive = archive
+        self.moment = moment
+        self.sums: list[str] = []
+
+    def add(self, name: str, data: bytes) -> None:
+        _add(self.archive, name, data, self.moment)
+        # `sha256sum` format: the hex digest, two spaces (text mode), the path.
+        self.sums.append(f"{hashlib.sha256(data).hexdigest()}  {name}\n")
+
+    def add_manifest(self) -> None:
+        _add(self.archive, MANIFEST_NAME, "".join(self.sums).encode("utf-8"), self.moment)
+
+
 def zip_bundle(documents: Sequence[Document], moment: datetime) -> bytes:
-    """Both CSVs, every original and one JSON report per invoice."""
+    """Both CSVs, every original, one JSON report per invoice and the `SHA256SUMS` manifest."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
-        _add(archive, filename(Format.CSV_INVOICES, moment), csv_invoices(documents), moment)
-        _add(archive, filename(Format.CSV_LINES, moment), csv_lines(documents), moment)
+        bundle = _Bundle(archive, moment)
+        bundle.add(filename(Format.CSV_INVOICES, moment), csv_invoices(documents))
+        bundle.add(filename(Format.CSV_LINES, moment), csv_lines(documents))
         for document in documents:
             original = f"originals/{document.id}-{safe_name(document.original_filename)}"
-            _add(archive, original, storage.read(document.storage_key), moment)
+            bundle.add(original, storage.read(document.storage_key))
         for document in documents:
             body = json.dumps(report(document), default=_json_value, ensure_ascii=False, indent=2)
-            _add(archive, f"reports/{document.id}.json", body.encode("utf-8"), moment)
+            bundle.add(f"reports/{document.id}.json", body.encode("utf-8"))
+        bundle.add_manifest()
     return buffer.getvalue()
 
 

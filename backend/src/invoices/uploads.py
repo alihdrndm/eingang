@@ -13,7 +13,7 @@ from typing import Any
 
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.core.files.uploadhandler import FileUploadHandler, StopUpload
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Sum
 
 from accounts.models import Organization, User
@@ -24,7 +24,7 @@ from eingang.workflows.contracts import process_invoice_workflow_id
 from einvoice import namespaces
 from einvoice.errors import UnsupportedFileError
 from einvoice.xmlsafe import parse_xml, strip_leading
-from invoices.models import Document, Event
+from invoices.models import LIVE_SHA256_CONSTRAINT, Document, Event
 
 MAX_FILES_PER_REQUEST = 10
 # Multipart boundaries and headers around the files; generous, it only bounds the body.
@@ -174,6 +174,12 @@ def is_duplicate(organization: Organization, sha256: str) -> bool:
     ).exists()
 
 
+def _is_live_duplicate(error: IntegrityError) -> bool:
+    """The insert lost a race for `documents_org_sha256_live_uniq`, and nothing else."""
+    diag = getattr(error.__cause__, "diag", None)
+    return getattr(diag, "constraint_name", None) == LIVE_SHA256_CONSTRAINT
+
+
 def store_document(
     organization: Organization,
     name: str,
@@ -235,17 +241,27 @@ def store_uploads(user: User, files: list[tuple[str, bytes]]) -> UploadResult:
         organization, len(new_files), sum(len(item[1]) for item in new_files.values())
     )
     for sha256, (name, data, kind) in new_files.items():
-        created.append(
-            store_document(
-                organization,
-                name,
-                data,
-                kind,
-                sha256=sha256,
-                source=Document.Source.UPLOAD,
-                actor=user,
-            )
-        )
+        try:
+            # A savepoint, so a lost race leaves the other files of the request intact.
+            with transaction.atomic():
+                document = store_document(
+                    organization,
+                    name,
+                    data,
+                    kind,
+                    sha256=sha256,
+                    source=Document.Source.UPLOAD,
+                    actor=user,
+                )
+        except IntegrityError as error:
+            if not _is_live_duplicate(error):
+                raise
+            # A parallel request stored the same file after the duplicate check. The insert
+            # failed before the file was written, and the key holds this document's own id,
+            # so nothing is left in storage.
+            duplicates.append((name, len(data), sha256))
+            continue
+        created.append(document)
     reported = []
     for name, size, sha256 in duplicates:
         existing = Document.objects.get(

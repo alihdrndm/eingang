@@ -15,6 +15,10 @@ class AppendOnlyError(Exception):
     """Raised when code tries to change or delete a row of an append-only table."""
 
 
+# One live (not deleted) document per file and organisation; uploads rely on its name.
+LIVE_SHA256_CONSTRAINT = "documents_org_sha256_live_uniq"
+
+
 class Document(BaseModel):
     class Kind(models.TextChoices):
         XML = "xml"
@@ -77,7 +81,7 @@ class Document(BaseModel):
             models.UniqueConstraint(
                 fields=["organization", "sha256"],
                 condition=Q(deleted_at__isnull=True),
-                name="documents_org_sha256_live_uniq",
+                name=LIVE_SHA256_CONSTRAINT,
             )
         ]
         indexes: ClassVar = [
@@ -283,7 +287,7 @@ class Approval(BaseModel):
 
 
 class Event(BaseModel):
-    """One entry of a document's audit trail.
+    """One entry of a document's or an organisation's audit trail.
 
     The audit trail is evidence of who did what and when, so it is append-only: a saved
     event can never be changed or deleted through the model.
@@ -306,6 +310,13 @@ class Event(BaseModel):
         REMINDER_SENT = "reminder.sent"
         EXPORT_CREATED = "export.created"
         DOCUMENT_DELETED = "document.deleted"
+        # Organisation events: `document` is NULL.
+        ORGANIZATION_SETTINGS_CHANGED = "organization.settings_changed"
+        MEMBER_CREATED = "member.created"
+        MEMBER_ROLE_CHANGED = "member.role_changed"
+        MEMBER_DETAILS_CHANGED = "member.details_changed"
+        MEMBER_DEACTIVATED = "member.deactivated"
+        MEMBER_REACTIVATED = "member.reactivated"
 
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="events")
     document = models.ForeignKey(

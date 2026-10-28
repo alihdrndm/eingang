@@ -1,6 +1,7 @@
 """Review endpoints: edit, resolve, mark-reviewed, decision, send-back, reopen, retry, delete."""
 
 from collections.abc import Callable
+from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -9,7 +10,8 @@ from pytest_django import DjangoCaptureOnCommitCallbacks
 
 from accounts.models import Organization, User
 from eingang import temporal_client
-from invoices.models import Approval, Check, Document, Event, Invoice
+from invoices import review
+from invoices.models import Approval, Check, Document, Event, Invoice, InvoiceLine
 from suppliers.models import SupplierIban
 from tests.conftest import ApiClient, MakeUser
 
@@ -120,7 +122,7 @@ def test_edit_keeps_the_extraction_refusal_check(
     assert Check.objects.get(document=document, check_id="C12").details == {"reason": "disabled"}
 
 
-def test_edit_never_logs_iban_values(
+def test_edit_logs_iban_values_masked_only(
     signed_in: Callable[[str], ApiClient], organization: Organization
 ) -> None:
     api = signed_in("admin")
@@ -128,7 +130,73 @@ def test_edit_never_logs_iban_values(
     make_invoice(document, iban="DE89370400440532013000")
     api.unsafe("patch", url(document, "invoice"), data={"payee_iban": "DE02120300000000202051"})
     event = Event.objects.get(document=document, type="invoice.fields_edited")
-    assert event.data == {"field": "payee_iban", "change": "changed"}
+    assert event.data == {
+        "field": "payee_iban",
+        "change": "changed",
+        "old": "DE…3000",
+        "new": "DE…2051",
+    }
+    assert "370400440532" not in str(event.data)
+    assert "120300000000" not in str(event.data)
+
+
+def test_edit_logs_a_cleared_iban_as_none(
+    signed_in: Callable[[str], ApiClient], organization: Organization
+) -> None:
+    api = signed_in("admin")
+    document = document_in(organization, Status.NEEDS_REVIEW)
+    make_invoice(document, iban="DE89370400440532013000")
+    api.unsafe("patch", url(document, "invoice"), data={"payee_iban": ""})
+    event = Event.objects.get(document=document, type="invoice.fields_edited")
+    assert event.data["old"] == "DE…3000"
+    assert event.data["new"] is None
+
+
+@pytest.mark.parametrize(
+    ("value", "masked"),
+    [(None, None), ("", None), ("DE12", "…"), ("NL91ABNA0417164300", "NL…4300")],
+)
+def test_mask_iban(value: str | None, masked: str | None) -> None:
+    assert review.mask_iban(value) == masked
+
+
+def test_edit_keeps_the_replaced_lines_in_the_event(
+    signed_in: Callable[[str], ApiClient], organization: Organization
+) -> None:
+    api = signed_in("admin")
+    document = document_in(organization, Status.NEEDS_REVIEW)
+    invoice = make_invoice(document)
+    InvoiceLine.objects.create(
+        invoice=invoice, position=1, line_id="1", description="Kabel", quantity=Decimal("2"),
+        unit_code="H87", unit_price=Decimal("10"), net_amount=Decimal("20.00"),
+        tax_category="S", tax_rate=Decimal("19"),
+    )  # fmt: skip
+    lines = [{"description": "Montage", "quantity": "1", "net_amount": "80.00"}]
+    response = api.unsafe("patch", url(document, "invoice"), data={"lines": lines})
+    assert response.status_code == 200
+    event = Event.objects.get(document=document, type="invoice.fields_edited")
+    assert event.data["field"] == "lines"
+    assert (event.data["old"], event.data["new"]) == (1, 1)
+    [old] = event.data["old_lines"]
+    assert old == {
+        "position": 1,
+        "line_id": "1",
+        "description": "Kabel",
+        "quantity": old["quantity"],
+        "unit_code": "H87",
+        "unit_price": old["unit_price"],
+        "net_amount": "20.00",
+        "tax_category": "S",
+        "tax_rate": old["tax_rate"],
+    }
+    assert Decimal(old["quantity"]) == 2
+    assert Decimal(old["unit_price"]) == 10
+    assert Decimal(old["tax_rate"]) == 19
+    [new] = event.data["new_lines"]
+    assert new["position"] == 1
+    assert new["description"] == "Montage"
+    assert Decimal(new["net_amount"]) == Decimal("80.00")
+    assert new["line_id"] is None
 
 
 def test_edit_replaces_the_lines(
