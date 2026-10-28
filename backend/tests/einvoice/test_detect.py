@@ -196,7 +196,34 @@ def test_profile_en16931(spec_id: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "spec_id", [None, "", "urn:example:something", "urn:cen.eu:en16931:2017#compliant#urn:x"]
+    "spec_id",
+    [
+        "urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:selfbilling:3.0",
+        "urn:cen.eu:en16931:2017#compliant#urn:x",
+        "urn:cen.eu:en16931:2017#conformant#urn:example:extension",
+    ],
+)
+def test_profile_en16931_any_other_cius_or_extension(spec_id: str) -> None:
+    assert profile_from_spec_id(spec_id) == (Profile.EN16931, None)
+
+
+def test_profile_en16931_peppol_self_billing_is_an_einvoice() -> None:
+    spec_id = "urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:selfbilling:3.0"
+    detection = detect(xml.ubl(spec_id), "a.xml")
+    assert detection.profile is Profile.EN16931
+    assert detection.notes == []
+    assert detection.is_einvoice
+
+
+@pytest.mark.parametrize(
+    "spec_id",
+    [
+        None,
+        "",
+        "urn:example:something",
+        "urn:cen.eu:en16931:2017#compliant#",
+        "urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:basic",
+    ],
 )
 def test_profile_unknown(spec_id: str | None) -> None:
     assert profile_from_spec_id(spec_id) == (Profile.UNKNOWN, None)
@@ -298,6 +325,12 @@ def test_format_label_credit_note_by_type_code_381() -> None:
     detection = Detection(kind=Kind.XML, profile=Profile.XRECHNUNG, syntax=Syntax.CII)
     assert format_label(detection, 381) == "XRechnung · CII · credit note"
     assert format_label(detection, 380) == "XRechnung · CII"
+
+
+@pytest.mark.parametrize("code", [261, 262, 396, 532])
+def test_format_label_credit_note_by_any_credit_note_type_code(code: int) -> None:
+    detection = Detection(kind=Kind.XML, profile=Profile.EN16931, syntax=Syntax.UBL)
+    assert format_label(detection, code) == "EN 16931 · UBL · credit note"
 
 
 def test_format_label_credit_note_by_ubl_root() -> None:

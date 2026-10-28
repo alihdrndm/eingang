@@ -94,7 +94,13 @@ class CanonicalInvoice(_Frozen):
 
     @property
     def is_credit_note(self) -> bool:
-        return self.type_code == CREDIT_NOTE_TYPE_CODE
+        return is_credit_note_type(self.type_code)
 
 
-CREDIT_NOTE_TYPE_CODE = 381
+# BT-3 codes that make a document a credit note: the UNTDID 1001 credit-note codes of the
+# EN 16931 code list, as Peppol BIS Billing 3.0 lists them for a UBL CreditNote.
+CREDIT_NOTE_TYPE_CODES = frozenset({81, 83, 261, 262, 296, 308, 381, 396, 420, 458, 532})
+
+
+def is_credit_note_type(type_code: int | None) -> bool:
+    return type_code in CREDIT_NOTE_TYPE_CODES

@@ -55,6 +55,12 @@ def test_credit_note_is_type_381() -> None:
     assert not fmt.is_credit_note(None)
 
 
+@pytest.mark.parametrize("code", [261, 262, 396, 532])
+def test_other_credit_note_codes_are_credit_notes(code: int) -> None:
+    assert fmt.is_credit_note(code)
+    assert fmt.money(Decimal("10"), credit_note=fmt.is_credit_note(code)) == "-10,00"
+
+
 def test_file_has_bom_semicolons_and_crlf() -> None:
     data = fmt.write_csv(["A", "B"], [["1,50", "x;y"]])
     assert data.startswith(b"\xef\xbb\xbf")
