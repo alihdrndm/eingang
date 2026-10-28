@@ -11,7 +11,9 @@ cd backend && uv sync --extra worker && cd ..
 pnpm dev
 ```
 
-`pnpm dev` starts PostgreSQL and Temporal in Docker, then the API (http://localhost:8010), the Temporal worker and the web app (http://localhost:3110) with hot reload. The Temporal UI is at http://localhost:8233. Ctrl+C stops the three host processes; the containers keep running.
+`pnpm dev` starts PostgreSQL and Temporal in Docker, applies the migrations and creates the Temporal schedules (both do nothing when already up to date), then runs the API (http://localhost:8010), the Temporal worker and the web app (http://localhost:3110) with hot reload. The Temporal UI is at http://localhost:8233. Ctrl+C stops the three host processes; the containers keep running.
+
+The database starts empty. To load the seed data (the local organisation with one user per role and the twelve samples), run `pnpm seed` once while `pnpm dev` is running, or `pnpm db:reset` to start over.
 
 Copy `backend/.env.example` to `backend/.env` only if you need to change a default. Never commit `.env`.
 
@@ -21,7 +23,7 @@ Run them from the repository root. They work on Windows, macOS and Linux.
 
 | Script | Does |
 |--------|------|
-| `pnpm dev` | Starts `db` and `temporal` in Docker, then the API, the worker and the frontend with hot reload. |
+| `pnpm dev` | Starts `db` and `temporal` in Docker, migrates and ensures the Temporal schedules, then runs the API, the worker and the frontend with hot reload. |
 | `pnpm verify` | Backend lint, typecheck, the pinned ZUGFeRD corpus (downloaded on the first run, about 150 MB), tests with coverage and OpenAPI freshness; frontend lint, typecheck, tests, generated-types freshness and build. Stops at the first failure. |
 | `pnpm test:e2e` | Stops the development containers, runs the whole stack as the separate Compose project `eingang-e2e`, runs the Playwright smoke tests against http://localhost:3110, and removes the stack. Stop `pnpm dev` first: the ports are the same. |
 | `pnpm gen:api` | Exports the OpenAPI schema to `backend/openapi.json` and regenerates `frontend/src/api/schema.d.ts`. |

@@ -139,14 +139,11 @@ Prerequisites: Docker with Compose v2, Node 24 with Corepack, and [uv](https://d
 ```sh
 corepack enable
 pnpm install
-cd backend && uv sync --all-groups --all-extras && cp .env.example .env && cd ..
-docker compose up -d --wait db temporal
-cd backend && uv run python manage.py migrate && uv run poe ensure-schedules && cd ..
-pnpm seed
+cd backend && uv sync --extra worker && cd ..
 pnpm dev
 ```
 
-Open http://localhost:3110 and choose **Open the sandbox**, or sign in as `admin@example.invalid` with the password `eingang-dev` (the seed users; the password is `SEED_PASSWORD`). `pnpm dev` runs the API (http://localhost:8010), the worker and the web app; the Temporal UI is at http://localhost:8233. `pnpm verify` runs every check (the first run downloads the pinned test corpus, about 150 MB), and `pnpm test:e2e` runs the browser tests against the full Docker stack. The AI features stay off until `LLM_ENABLED=true` and an OpenAI key are set (see [docs/DEPLOY.md](docs/DEPLOY.md)).
+`pnpm dev` starts PostgreSQL and Temporal in Docker, applies the migrations and creates the Temporal schedules, then runs the API (http://localhost:8010), the worker and the web app; the Temporal UI is at http://localhost:8233. To load the seed users and samples, run `pnpm seed` once in a second terminal. Then open http://localhost:3110 and choose **Open the sandbox**, or sign in as `admin@example.invalid` with the password `eingang-dev` (the seed users; the password is `SEED_PASSWORD`). Copy `backend/.env.example` to `backend/.env` only to change a default. `pnpm verify` runs every check (the first run downloads the pinned test corpus, about 150 MB), and `pnpm test:e2e` runs the browser tests against the full Docker stack. The AI features stay off until `LLM_ENABLED=true` and an OpenAI key are set (see [docs/DEPLOY.md](docs/DEPLOY.md)).
 
 ## Tests and quality
 
