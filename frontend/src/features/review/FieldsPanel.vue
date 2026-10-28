@@ -103,9 +103,13 @@ async function startEdit(row: FieldRowState): Promise<void> {
   document.getElementById(`edit-${row.def.name}`)?.focus();
 }
 
-function cancel(): void {
+/** Ends the edit and puts focus back on the field's Edit button. */
+async function closeEdit(): Promise<void> {
+  const name = editing.value;
   editing.value = null;
   fieldError.value = null;
+  await nextTick();
+  if (name) document.getElementById(`edit-button-${name}`)?.focus();
 }
 
 async function save(row: FieldRowState): Promise<void> {
@@ -113,7 +117,7 @@ async function save(row: FieldRowState): Promise<void> {
   if (fieldError.value) return;
   const body = changes([row], { [row.def.name]: draft.value });
   if (Object.keys(body).length === 0) {
-    cancel();
+    await closeEdit();
     return;
   }
   saving.value = true;
@@ -124,7 +128,7 @@ async function save(row: FieldRowState): Promise<void> {
         body: body as never,
       }),
     );
-    editing.value = null;
+    void closeEdit();
     show({ kind: "success", message: `${row.def.label} saved.` });
     emit("saved");
   } catch (caught) {
@@ -194,11 +198,12 @@ function evidenceParts(row: FieldRowState): [string, string, string] | null {
                   v-model="draft"
                   class="edit__input"
                   :class="{ mono: isMono(row.def) }"
+                  :inputmode="row.def.kind === 'amount' ? 'decimal' : undefined"
                   :aria-invalid="fieldError ? 'true' : undefined"
                   :aria-describedby="
                     fieldError ? `edit-error-${row.def.name}` : undefined
                   "
-                  @keydown.esc.prevent="cancel"
+                  @keydown.esc.prevent="closeEdit"
                 />
                 <Button
                   type="submit"
@@ -207,7 +212,7 @@ function evidenceParts(row: FieldRowState): [string, string, string] | null {
                   :loading="saving"
                   >Save</Button
                 >
-                <Button size="sm" variant="ghost" @click="cancel"
+                <Button size="sm" variant="ghost" @click="closeEdit"
                   >Cancel</Button
                 >
                 <p
@@ -269,6 +274,7 @@ function evidenceParts(row: FieldRowState): [string, string, string] | null {
                 </button>
                 <button
                   v-if="canEdit"
+                  :id="`edit-button-${row.def.name}`"
                   type="button"
                   class="icon-button"
                   :aria-label="`Edit ${row.def.label}`"

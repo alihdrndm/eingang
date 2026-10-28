@@ -126,17 +126,71 @@ describe("FieldsPanel", () => {
     });
     await wrapper.find('[aria-label="Edit Gross"]').trigger("click");
     const input = wrapper.find("input");
-    await input.setValue("1.547,00");
+    await input.setValue("1.547");
     await wrapper.find("form").trigger("submit");
-    expect(wrapper.text()).toContain("Enter an amount like 1190.00.");
+    expect(wrapper.text()).toContain(
+      "Enter an amount like 1.190,00 or 1190.00.",
+    );
     expect(calls).toHaveLength(0);
-    await input.setValue("1547.10");
+    await input.setValue("1.547,10");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
     const patch = calls.find((call) => call.method === "PATCH");
     expect(patch?.path).toBe("/api/v1/documents/doc-8/invoice");
     expect(JSON.parse(patch?.body ?? "{}")).toEqual({ gross_total: "1547.10" });
     expect(wrapper.emitted("saved")).toHaveLength(1);
+    expect(document.activeElement).toBe(
+      wrapper.find('[aria-label="Edit Gross"]').element,
+    );
+    wrapper.unmount();
+  });
+
+  it("asks for a decimal keyboard for amounts only", async () => {
+    const wrapper = mount(FieldsPanel, {
+      props: { document: LLM, canEdit: true },
+      attachTo: document.body,
+    });
+    await wrapper.find('[aria-label="Edit Gross"]').trigger("click");
+    expect(wrapper.find("input").attributes("inputmode")).toBe("decimal");
+    await wrapper.find("input").trigger("keydown", { key: "Escape" });
+    await wrapper.find('[aria-label="Edit Invoice number"]').trigger("click");
+    expect(wrapper.find("input").attributes("inputmode")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it.each([
+    [
+      "Escape",
+      (form: ReturnType<typeof mount>) =>
+        form.find("input").trigger("keydown", { key: "Escape" }),
+    ],
+    [
+      "Cancel",
+      (form: ReturnType<typeof mount>) =>
+        form
+          .findAll("button")
+          .find((button) => button.text() === "Cancel")
+          ?.trigger("click"),
+    ],
+    [
+      "Save without changes",
+      (form: ReturnType<typeof mount>) => form.find("form").trigger("submit"),
+    ],
+  ])("returns focus to the Edit button after %s", async (_, end) => {
+    const wrapper = mount(FieldsPanel, {
+      props: { document: LLM, canEdit: true },
+      attachTo: document.body,
+    });
+    await wrapper.find('[aria-label="Edit Gross"]').trigger("click");
+    expect(document.activeElement).toBe(wrapper.find("input").element);
+
+    await end(wrapper);
+    await flushPromises();
+
+    expect(wrapper.find("form").exists()).toBe(false);
+    expect(document.activeElement).toBe(
+      wrapper.find('[aria-label="Edit Gross"]').element,
+    );
     wrapper.unmount();
   });
 
