@@ -6,7 +6,7 @@ same rows. Light on purpose: no validation, PDF or LLM code.
 
 from typing import Any
 
-from django.db import transaction
+from django.db import models, transaction
 
 from einvoice.model import CanonicalInvoice
 from invoices.extraction import Extraction
@@ -51,6 +51,21 @@ def invoice_columns(invoice: CanonicalInvoice) -> dict[str, Any]:  # boundary: m
     return columns
 
 
+def _fitting(model: type[models.Model], values: dict[str, Any]) -> dict[str, Any]:
+    """The values, with each text longer than its column replaced by None.
+
+    The XML can carry values the columns can't hold (a three-letter country code, an
+    overlong BIC); storing them would fail the whole activity. The LLM path stores such a
+    value as None too (`extraction.fits_column`).
+    """
+    fitted = dict(values)
+    for name, value in values.items():
+        limit: object = getattr(model._meta.get_field(name), "max_length", None)
+        if isinstance(value, str) and isinstance(limit, int) and len(value) > limit:
+            fitted[name] = None
+    return fitted
+
+
 def save_structured(
     document: Document,
     canonical: CanonicalInvoice,
@@ -68,16 +83,17 @@ def save_structured(
                 "organization": document.organization,
                 "syntax": syntax,
                 "profile": profile,
-                "spec_id": spec_id,
                 "is_einvoice": is_einvoice,
                 "extraction_method": Invoice.ExtractionMethod.XML,
-                **invoice_columns(canonical),
+                **_fitting(Invoice, {"spec_id": spec_id, **invoice_columns(canonical)}),
             },
         )
         invoice.lines.all().delete()
         InvoiceLine.objects.bulk_create(
             [
-                InvoiceLine(invoice=invoice, position=position, **line.model_dump())
+                InvoiceLine(
+                    invoice=invoice, position=position, **_fitting(InvoiceLine, line.model_dump())
+                )
                 for position, line in enumerate(canonical.lines, start=1)
             ]
         )
