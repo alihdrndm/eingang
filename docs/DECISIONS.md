@@ -431,3 +431,7 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 
 ### Which type codes are credit notes
 - **A credit note is any BT-3 code in `einvoice.model.CREDIT_NOTE_TYPE_CODES`: 81, 83, 261, 262, 296, 308, 381, 396, 420, 458, 532.** These are the UNTDID 1001 credit-note codes of the EN 16931 code list, the set Peppol BIS Billing 3.0 allows in a UBL `CreditNote` (rule PEPPOL-EN16931-P0101). Before, only 381 counted. The one set decides the " · credit note" format label, negative amounts in the CSV exports, whether `einvoice.write` writes a UBL `CreditNote`, and the business checks. XRechnung 3 itself allows only 381 among them; other codes still pass through as they were sent. The frontend still marks only 381 as a credit note (`frontend/src/features/review/fields.ts`).
+
+### Credit notes in C03 and C08
+- **C03 compares only documents of the same kind:** a credit note only with earlier credit notes, an invoice (any other or no type code) only with earlier invoices. A credit note that cancels an invoice usually repeats its gross total and lands within the window, which is not a duplicate.
+- **C08 doesn't fire for a credit note, or when the amount payable is zero or less:** nothing is owed, so nothing is overdue. A missing amount payable still lets C08 fire, as before.

@@ -20,6 +20,7 @@ from stdnum.eu import vat as stdnum_vat
 
 from eingang import clock
 from einvoice.fields import compact_upper
+from einvoice.model import CREDIT_NOTE_TYPE_CODES, is_credit_note_type
 from invoices.models import Check, Document, Event, Invoice, ValidationReport
 from suppliers.models import SupplierIban
 from suppliers.trust import first_invoice_id, is_trusted
@@ -354,6 +355,11 @@ def _c03_duplicate_similar(invoice: Invoice, context: CheckContext) -> list[Find
         gross_total=invoice.gross_total,
         issue_date__isnull=False,
     )
+    # A credit note for an invoice often repeats its gross total; only compare like with like.
+    if is_credit_note_type(invoice.type_code):
+        candidates = candidates.filter(type_code__in=CREDIT_NOTE_TYPE_CODES)
+    else:
+        candidates = candidates.exclude(type_code__in=CREDIT_NOTE_TYPE_CODES)
     for other in candidates:
         if other.issue_date is None or other.normalised_number == invoice.normalised_number:
             continue
@@ -440,6 +446,10 @@ def _c07_vat_id_invalid(invoice: Invoice, context: CheckContext) -> list[Finding
 
 def _c08_overdue(invoice: Invoice, context: CheckContext) -> list[Finding]:
     if invoice.due_date is None or invoice.due_date >= context.today:
+        return []
+    # Nothing is owed on a credit note or when nothing is left to pay.
+    nothing_to_pay = invoice.payable_amount is not None and invoice.payable_amount <= 0
+    if is_credit_note_type(invoice.type_code) or nothing_to_pay:
         return []
     return [
         Finding(

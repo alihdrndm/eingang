@@ -325,6 +325,28 @@ def test_C03_not_for_a_different_gross_or_the_same_number(organization: Organiza
     assert "C03" not in ids(run(other_gross))
 
 
+def test_C03_a_credit_note_does_not_match_an_invoice(organization: Organization) -> None:
+    invoice_on(organization, minutes=1, type_code=380)
+    credit_note = invoice_on(organization, minutes=2, type_code=381)
+    assert "C03" not in ids(run(credit_note))
+    later_invoice = invoice_on(organization, minutes=3, type_code=None)
+    assert only(run(later_invoice), "C03").details == {
+        "document_id": str(Invoice.objects.get(type_code=380).document_id)
+    }
+
+
+def test_C03_an_invoice_does_not_match_an_earlier_credit_note(organization: Organization) -> None:
+    invoice_on(organization, minutes=1, type_code=261)
+    invoice = invoice_on(organization, minutes=2, type_code=None)
+    assert "C03" not in ids(run(invoice))
+
+
+def test_C03_credit_notes_match_each_other(organization: Organization) -> None:
+    earlier = invoice_on(organization, minutes=1, type_code=381)
+    later = invoice_on(organization, minutes=2, type_code=396)
+    assert only(run(later), "C03").details == {"document_id": str(earlier.document_id)}
+
+
 def test_C03_ignores_deleted_documents(organization: Organization) -> None:
     earlier = invoice_on(organization, minutes=1)
     later = invoice_on(organization, minutes=2)
@@ -440,6 +462,32 @@ def test_C08_uses_the_context_date(organization: Organization) -> None:
     invoice = invoice_on(organization, minutes=1, due_date=TODAY)
     later = CheckContext(today=TODAY + timedelta(days=1))
     assert "C08" in ids(run(invoice, later))
+
+
+@pytest.mark.parametrize("type_code", [381, 261, 396])
+def test_C08_not_for_a_credit_note(organization: Organization, type_code: int) -> None:
+    due = TODAY - timedelta(days=1)
+    credit_note = invoice_on(organization, minutes=1, due_date=due, type_code=type_code)
+    assert "C08" not in ids(run(credit_note))
+
+
+@pytest.mark.parametrize("payable", ["0.00", "-10.00"])
+def test_C08_not_when_nothing_is_left_to_pay(organization: Organization, payable: str) -> None:
+    paid = invoice_on(
+        organization,
+        minutes=1,
+        due_date=TODAY - timedelta(days=1),
+        prepaid_amount=Decimal("1190.00") - Decimal(payable),
+        payable_amount=Decimal(payable),
+    )
+    assert "C08" not in ids(run(paid))
+
+
+def test_C08_still_fires_without_a_payable_amount(organization: Organization) -> None:
+    invoice = invoice_on(
+        organization, minutes=1, due_date=TODAY - timedelta(days=1), payable_amount=None
+    )
+    assert "C08" in ids(run(invoice))
 
 
 # --- C09 to C12 --------------------------------------------------------------------------
