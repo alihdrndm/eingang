@@ -571,6 +571,18 @@ def test_C05_fires_when_the_first_invoice_had_no_iban(organization: Organization
     assert "C05" in ids(run(later))
 
 
+def test_C05_deleting_the_first_invoice_does_not_move_the_trust(
+    organization: Organization,
+) -> None:
+    # Soft-deleting the supplier's first invoice must not make a later invoice, and its new
+    # bank account, the first: C05 still fires and the IBAN is not trusted.
+    first = invoice_on(organization, minutes=1, payee_iban=IBAN)
+    changed = invoice_on(organization, minutes=2, payee_iban=OTHER_IBAN)
+    first.document.deleted_at = RECEIVED
+    first.document.save()
+    assert "C05" in ids(run(changed))
+
+
 # --- C06 to C08 --------------------------------------------------------------------------
 
 
@@ -900,6 +912,9 @@ def test_apply_findings_deletes_unresolved_checks_that_no_longer_apply(
     apply_findings(document, [finding("C13", field="issue_date")])
     remaining = list(Check.objects.filter(document=document).values_list("check_id", "details"))
     assert remaining == [("C13", {"field": "issue_date"})]
+    cleared = Event.objects.filter(document=document, type=Event.Type.CHECK_CLEARED)
+    assert sorted(event.data["check_id"] for event in cleared) == ["C08", "C13"]
+    assert all(event.actor is None and "code" in event.data for event in cleared)
 
 
 def test_apply_findings_keeps_resolved_checks(organization: Organization) -> None:

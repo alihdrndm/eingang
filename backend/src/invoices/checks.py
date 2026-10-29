@@ -148,9 +148,20 @@ def apply_findings(document: Document, findings: list[Finding]) -> None:
                 current.details = finding.details
                 current.save(update_fields=["message", "details", "updated_at"])
 
-        stale.extend(check for key, check in unresolved.items() if key not in wanted)
+        gone = [check for key, check in unresolved.items() if key not in wanted]
+        stale.extend(gone)
         if stale:
             Check.objects.filter(id__in=[check.id for check in stale]).delete()
+        # A finding that no longer applies leaves a trace, so a removed blocking check (a C05
+        # after an IBAN edit, say) can be told apart from one that was never raised.
+        for check in gone:
+            Event.objects.create(
+                organization_id=document.organization_id,
+                document=document,
+                actor=None,
+                type=Event.Type.CHECK_CLEARED,
+                data={"check_id": check.check_id, "code": check.code},
+            )
 
 
 def _create(document: Document, finding: Finding) -> None:
@@ -191,8 +202,8 @@ def _key(check_id: str, details: object) -> tuple[str, str | None]:
 # --- helpers -----------------------------------------------------------------------------
 
 
-def _earlier_invoices(invoice: Invoice) -> QuerySet[Invoice]:
-    """Other non-deleted invoices of the organisation received before this one.
+def _earlier_invoices(invoice: Invoice, *, with_deleted: bool = False) -> QuerySet[Invoice]:
+    """Other invoices of the organisation received before this one, by default non-deleted.
 
     "Received earlier" means an earlier `received_at`, ties broken by document id.
     """
@@ -200,10 +211,11 @@ def _earlier_invoices(invoice: Invoice) -> QuerySet[Invoice]:
     earlier = Q(document__received_at__lt=document.received_at) | Q(
         document__received_at=document.received_at, document__id__lt=document.id
     )
+    invoices = Invoice.objects.filter(organization_id=invoice.organization_id)
+    if not with_deleted:
+        invoices = invoices.filter(document__deleted_at__isnull=True)
     return (
-        Invoice.objects.filter(organization_id=invoice.organization_id)
-        .filter(document__deleted_at__isnull=True)
-        .filter(earlier)
+        invoices.filter(earlier)
         .exclude(id=invoice.id)
         .order_by("document__received_at", "document__id")
     )
@@ -462,7 +474,8 @@ def _c05_bank_details_changed(invoice: Invoice, context: CheckContext) -> list[F
     supplier = invoice.supplier
     if not invoice.payee_iban or supplier is None:
         return []
-    if not _earlier_invoices(invoice).filter(supplier_id=supplier.id).exists():
+    # A deleted earlier invoice still counts, so deleting it can't make this one the first.
+    if not _earlier_invoices(invoice, with_deleted=True).filter(supplier_id=supplier.id).exists():
         return []
     entry = SupplierIban.objects.filter(supplier=supplier, iban=invoice.payee_iban).first()
     if entry is not None and is_trusted(entry, first_invoice_id(supplier)):

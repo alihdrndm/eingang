@@ -2,7 +2,7 @@ import pytest
 
 from accounts.models import Organization, User
 from invoices.actions import ACTIONS_BY_STATUS, AllowedAction, allowed_actions
-from invoices.models import Document
+from invoices.models import Document, Event
 from tests.conftest import MakeUser
 from tests.factories import add_check, make_document
 
@@ -81,8 +81,48 @@ def test_FOUR_EYES_reviewer_cannot_decide(organization: Organization, make_user:
     for action in ("approve", "reject"):
         assert entries[action].enabled is False
         assert entries[action].reason_code == "FOUR_EYES"
-        assert entries[action].reason == "You reviewed this invoice. Someone else must approve it."
+        assert entries[action].reason == "You prepared this invoice. Someone else must approve it."
     assert entries["send_back"].enabled is True
+
+
+@pytest.mark.parametrize(
+    "event_type",
+    [
+        Event.Type.DOCUMENT_RECEIVED,
+        Event.Type.INVOICE_FIELDS_EDITED,
+        Event.Type.CHECK_RESOLVED,
+        Event.Type.REVIEW_COMPLETED,
+    ],
+)
+def test_FOUR_EYES_whoever_prepared_the_invoice_cannot_decide(
+    event_type: str, organization: Organization, make_user: MakeUser
+) -> None:
+    # A straight-through invoice has no reviewer: its uploader must not approve it alone, and
+    # neither may someone who changed its fields or cleared one of its checks.
+    preparer = make_user("admin")
+    other = make_user("approver")
+    document = make_document(organization, status=Status.AWAITING_APPROVAL)
+    Event.objects.create(
+        organization=organization, document=document, actor=preparer, type=event_type, data={}
+    )
+    for action in ("approve", "reject"):
+        assert actions_for(document, preparer)[action].reason_code == "FOUR_EYES"
+        assert actions_for(document, other)[action].enabled is True
+
+
+def test_FOUR_EYES_other_events_do_not_count_as_preparing(
+    organization: Organization, make_user: MakeUser
+) -> None:
+    admin = make_user("admin")
+    document = make_document(organization, status=Status.AWAITING_APPROVAL)
+    Event.objects.create(
+        organization=organization,
+        document=document,
+        actor=admin,
+        type=Event.Type.REVIEW_SENT_BACK,
+        data={},
+    )
+    assert actions_for(document, admin)["approve"].enabled is True
 
 
 def test_FOUR_EYES_off_lets_the_reviewer_decide(

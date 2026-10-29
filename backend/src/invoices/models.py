@@ -303,6 +303,7 @@ class Event(BaseModel):
         INVOICE_FIELDS_EDITED = "invoice.fields_edited"
         CHECK_CREATED = "check.created"
         CHECK_RESOLVED = "check.resolved"
+        CHECK_CLEARED = "check.cleared"
         REVIEW_COMPLETED = "review.completed"
         APPROVAL_DECIDED = "approval.decided"
         REVIEW_SENT_BACK = "review.sent_back"

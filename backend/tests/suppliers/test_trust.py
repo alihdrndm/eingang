@@ -32,11 +32,14 @@ def test_a_later_iban_is_new_until_confirmed(organization: Organization) -> None
     assert iban_status(entry, first.id) == "confirmed"
 
 
-def test_deleted_documents_do_not_count_as_the_first_invoice(organization: Organization) -> None:
+def test_a_deleted_first_invoice_confers_no_trust(organization: Organization) -> None:
+    # Deleting the first invoice must not promote the next one (and its IBAN) to "first".
     supplier = make_supplier(organization)
     deleted = make_document(organization, received_minutes=1)
     make_invoice(deleted, supplier=supplier)
     deleted.deleted_at = RECEIVED
     deleted.save()
     second = make_invoice(make_document(organization, received_minutes=2), supplier=supplier)
-    assert first_invoice_id(supplier) == second.id
+    entry = add_iban(supplier, NEW, second)
+    assert first_invoice_id(supplier) is None
+    assert iban_status(entry, first_invoice_id(supplier)) == "new"

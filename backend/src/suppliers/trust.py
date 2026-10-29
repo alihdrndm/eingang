@@ -14,14 +14,21 @@ IbanStatus = Literal["known", "confirmed", "new"]
 
 
 def first_invoice_id(supplier: Supplier) -> UUID | None:
-    """The supplier's earliest received, non-deleted invoice; ties broken by document id."""
+    """The supplier's earliest received invoice, ties broken by document id; None when that
+    invoice was deleted.
+
+    Deleted invoices still count when finding the first one, so deleting it never makes a
+    later invoice, and its bank account, "first". A deleted first invoice confers no trust:
+    every IBAN of the supplier then needs a person's confirmation.
+    """
     first = (
-        supplier.invoices.filter(document__deleted_at__isnull=True)
-        .order_by("document__received_at", "document__id")
-        .values_list("id", flat=True)
+        supplier.invoices.order_by("document__received_at", "document__id")
+        .values_list("id", "document__deleted_at")
         .first()
     )
-    return first
+    if first is None or first[1] is not None:
+        return None
+    return first[0]
 
 
 def iban_status(entry: SupplierIban, first_invoice: UUID | None) -> IbanStatus:

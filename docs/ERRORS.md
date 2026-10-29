@@ -71,7 +71,7 @@ Each code has its own section, so `type` links straight to it.
 `403`. The action is not available in a sandbox (for example managing members).
 
 ### FOUR_EYES
-`403`. The organisation requires four-eyes approval and this user reviewed the invoice, so someone else must decide.
+`403`. The organisation requires four-eyes approval and this user prepared the invoice (uploaded it, edited its fields, resolved one of its checks or marked it reviewed), so someone else must decide.
 
 ## Uploads
 
