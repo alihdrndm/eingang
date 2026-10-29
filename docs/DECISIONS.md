@@ -239,7 +239,7 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 ### `allowed_actions` details
 - Roles per action follow the endpoint table: edit, resolve, mark reviewed, send back, reopen and retry are admin/accountant; approve and reject are admin/approver; delete is admin.
 - No document action is closed to sandbox visitors. The spec restricts only members, organisation settings other than the name, and deleting the organisation. `SANDBOX_RESTRICTED` therefore never appears in `allowed_actions`; it stays in the reason order for completeness.
-- `FOUR_EYES` applies to approve and reject when the organisation has four-eyes on and the user is the document's `reviewed_by`. `BLOCKING_CHECKS` applies to "mark reviewed" and counts unresolved `block` checks only.
+- `FOUR_EYES` applies to approve and reject when the organisation has four-eyes on and the user prepared the document: its `reviewed_by`, or the actor of its `document.received`, `invoice.fields_edited`, `check.resolved` or `review.completed` events (see "Four-eyes counts everyone who prepared the invoice" below). `BLOCKING_CHECKS` applies to "mark reviewed" and counts unresolved `block` checks only.
 
 ### Upload details
 - The size-limited upload reader is installed by `invoices.middleware.UploadLimitMiddleware` for every multipart POST. DRF's CSRF check reads `request.POST`, which parses the body before the view runs, so a view cannot choose the reader. The middleware also refuses a body larger than ten maximum-size files from `Content-Length` alone, and a single file over the limit stops reading at the first byte past it. Both answer `413 FILE_TOO_LARGE`.
@@ -441,3 +441,11 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 
 ### XML values that don't fit their column
 - **An XML value longer than its column is stored as None**, on the invoice (including `spec_id`) and on its lines, as the LLM path already does (`invoices.extraction.fits_column`). Before, a three-letter country code or an overlong BIC failed the insert, the activity was retried and the document ended "failed after several attempts". The XML itself is kept and shown, so the value can still be read there. Numbers are not checked: the parser rounds them to the columns' decimal places, and an amount too large for its column (more than 16 digits before the point) is not realistic.
+
+## 2026-10-29 — Four-eyes and supplier IBAN trust
+
+### Four-eyes counts everyone who prepared the invoice
+- **Replaces** the rule that only the document's `reviewed_by` may not approve or reject.
+- **Did:** with four-eyes on, a user who uploaded the document, edited its fields, resolved one of its checks or marked it reviewed can't approve or reject it (`invoices/four_eyes.py`, used by the status machine and by `allowed_actions`). Sending it back stays allowed. The involvement is read from the document's events, so it holds across send-back and reopen.
+- **Why:** an invoice that goes straight to `awaiting_approval` has no reviewer, so its uploader could approve it alone; and a user who changed the IBAN or confirmed the changed bank details (C05) could approve after someone else clicked "mark reviewed". Both let one person get a payment approved.
+- **Trade-off:** in an organisation with two members, the one who uploads can never approve; four-eyes can be switched off (the change is recorded since the audit events above).

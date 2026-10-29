@@ -12,6 +12,7 @@ from django.db import transaction
 from accounts.models import User
 from eingang import clock
 from eingang.problem import ProblemError
+from invoices.four_eyes import FOUR_EYES_REASON, prepared_by
 from invoices.models import Approval, Check, Document, Event, Invoice
 
 Status = Document.Status
@@ -123,13 +124,8 @@ def _check_condition(
             )
     if current == Status.AWAITING_APPROVAL and target in (Status.APPROVED, Status.REJECTED):
         organization = document.organization
-        if actor is not None and organization.four_eyes and document.reviewed_by_id == actor.id:
-            raise ProblemError(
-                403,
-                "FOUR_EYES",
-                "Someone else must decide",
-                "You reviewed this invoice. Someone else must approve it.",
-            )
+        if actor is not None and organization.four_eyes and prepared_by(document, actor):
+            raise ProblemError(403, "FOUR_EYES", "Someone else must decide", FOUR_EYES_REASON)
         return _require_comment(comment, required=target == Status.REJECTED)
     if (current, target) == (Status.AWAITING_APPROVAL, Status.NEEDS_REVIEW):
         return _require_comment(comment, required=True)
