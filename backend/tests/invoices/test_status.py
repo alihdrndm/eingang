@@ -97,6 +97,24 @@ def test_FOUR_EYES_reviewer_cannot_decide(organization: Organization, make_user:
     assert transition(document, Status.APPROVED, admin).status == Status.APPROVED
 
 
+def test_FOUR_EYES_uploader_of_a_straight_through_invoice_cannot_decide(
+    organization: Organization, make_user: MakeUser
+) -> None:
+    uploader = make_user("admin")
+    document = make_document(organization, status=Status.AWAITING_APPROVAL)
+    Event.objects.create(
+        organization=organization,
+        document=document,
+        actor=uploader,
+        type=Event.Type.DOCUMENT_RECEIVED,
+        data={},
+    )
+    with pytest.raises(ProblemError) as error:
+        transition(document, Status.APPROVED, uploader)
+    assert (error.value.status, error.value.code) == (403, "FOUR_EYES")
+    assert transition(document, Status.APPROVED, make_user("approver")).status == Status.APPROVED
+
+
 def test_decision_creates_an_approval(organization: Organization, make_user: MakeUser) -> None:
     approver = make_user("approver")
     document = make_document(organization, status=Status.AWAITING_APPROVAL)

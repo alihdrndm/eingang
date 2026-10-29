@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from accounts.models import User
+from invoices.four_eyes import FOUR_EYES_REASON, prepared_by
 from invoices.models import Check, Document
 
 Action = Literal[
@@ -83,9 +84,9 @@ def _disabled_reason(
     if (
         action in ("approve", "reject")
         and document.organization.four_eyes
-        and document.reviewed_by_id == user.id
+        and prepared_by(document, user)
     ):
-        return "FOUR_EYES", "You reviewed this invoice. Someone else must approve it."
+        return "FOUR_EYES", FOUR_EYES_REASON
     if action == "mark_reviewed" and blocking_checks > 0:
         return "BLOCKING_CHECKS", _blocking_checks_reason(blocking_checks)
     return None
