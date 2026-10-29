@@ -185,6 +185,17 @@ function describe(
         icon: "circle-check",
         tone: "ok",
       };
+    case "check.cleared": {
+      // The check is gone (its finding no longer applies), so only its id and code remain.
+      const code = text(data.code)?.toLowerCase().replace(/_/g, " ");
+      return {
+        title: "Check no longer applies",
+        detail:
+          [text(data.check_id), code].filter(Boolean).join(" · ") || undefined,
+        icon: "circle",
+        tone: "neutral",
+      };
+    }
     case "review.completed":
       return {
         title: `Marked reviewed${by(event)}`,

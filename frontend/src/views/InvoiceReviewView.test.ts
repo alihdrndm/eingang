@@ -452,9 +452,19 @@ describe("InvoiceReviewView timeline", () => {
             created_at: "2026-10-08T14:05:00Z",
           },
           {
+            type: "check.cleared",
+            data: { check_id: "C05", code: "BANK_DETAILS_CHANGED" },
+            created_at: "2026-10-08T14:00:01Z",
+          },
+          {
             type: "invoice.fields_edited",
             actor_name: "Anna Weber",
-            data: { field: "payee_iban", change: "changed" },
+            data: {
+              field: "payee_iban",
+              change: "changed",
+              old: "DE…3000",
+              new: "DE…2051",
+            },
             created_at: "2026-10-08T14:00:00Z",
           },
           {
@@ -480,12 +490,17 @@ describe("InvoiceReviewView timeline", () => {
     expect(titles).toEqual([
       "Waiting for approval",
       "Marked reviewed by Anna Weber",
+      "Check no longer applies",
       "IBAN edited by Anna Weber",
       "Visible PDF not compared",
       "Checked: valid e-invoice",
       "Received",
     ]);
     expect(view.find(".activity").text()).not.toMatch(/DE\d{2}/);
+    expect(view.find(".activity").text()).not.toContain("3000");
+    expect(view.find(".activity").text()).toContain(
+      "C05 · bank details changed",
+    );
   });
 });
 

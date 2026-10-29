@@ -449,3 +449,13 @@ Of the 26 files in `ZUGFeRDv1/fail` and `ZUGFeRDv2/fail`, 7 are not detected as 
 - **Did:** with four-eyes on, a user who uploaded the document, edited its fields, resolved one of its checks or marked it reviewed can't approve or reject it (`invoices/four_eyes.py`, used by the status machine and by `allowed_actions`). Sending it back stays allowed. The involvement is read from the document's events, so it holds across send-back and reopen.
 - **Why:** an invoice that goes straight to `awaiting_approval` has no reviewer, so its uploader could approve it alone; and a user who changed the IBAN or confirmed the changed bank details (C05) could approve after someone else clicked "mark reviewed". Both let one person get a payment approved.
 - **Trade-off:** in an organisation with two members, the one who uploads can never approve; four-eyes can be switched off (the change is recorded since the audit events above).
+
+### Deleting a supplier's first invoice does not move IBAN trust
+- **Replaces** the rule that deleted documents don't count as a supplier's first invoice (`suppliers/trust.py`).
+- **Did:** the first invoice is now the earliest one ever received, deleted or not. When it is deleted, it confers no trust: no IBAN of the supplier is `known` until a person confirms it. C05 counts deleted earlier invoices too, so deleting the first invoice can't make a later one "the first".
+- **Why:** soft-deleting the first invoice made the next invoice's new IBAN `known`, and the next recheck then silently removed its open C05 — a way around the changed-bank-details check.
+- **Trade-off:** after a first invoice is deleted (for example a wrong upload), the supplier's bank account needs one confirmation.
+
+### A check that no longer applies leaves a `check.cleared` event
+- **Did:** when a recheck removes an unresolved check because its finding no longer applies, a `check.cleared` event (no actor, with the check id and code) records it. The timeline shows "Check no longer applies".
+- **Why:** a blocking check that disappears after an edit must be traceable; before, the check row was deleted and nothing showed it had existed.
