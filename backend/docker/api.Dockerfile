@@ -2,7 +2,7 @@
 # API image. Build context: the repository root, so the image can include samples/ and
 # evals/latest.json. The last stage is the production image.
 
-FROM ghcr.io/astral-sh/uv:0.12.24 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
 FROM python:3.13-slim AS builder
 COPY --from=uv /uv /usr/local/bin/uv
